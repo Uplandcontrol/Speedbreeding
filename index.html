@@ -1,0 +1,2067 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스피드브리딩 시설 통합 관리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #F0F4F1;
+    --panel: #FFFFFF;
+    --ink: #14201A;
+    --ink-soft: #6B7A72;
+    --ink-faint: #97A39C;
+    --line: #E1E7E2;
+    --line-soft: #EBEFEC;
+    --teal: #1E8A73;
+    --teal-deep: #0F5B4B;
+    --teal-soft: #E6F3EF;
+    --amber: #C97A2B;
+    --danger: #B5453B;
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+    --shadow-sm: 0 1px 2px rgba(20,32,26,0.04), 0 1px 1px rgba(20,32,26,0.03);
+    --shadow-md: 0 6px 20px rgba(15,60,48,0.08);
+    --shadow-lg: 0 20px 48px rgba(15,60,48,0.14);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
+
+  header{
+    background:linear-gradient(180deg, #FFFFFF 0%, #FBFDFC 100%);
+    border-bottom:2px solid var(--line);
+    padding:24px 36px; position:sticky; top:0; z-index:10; backdrop-filter:blur(6px);
+  }
+  .header-top{ display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; max-width:1440px; margin:0 auto; }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:800; letter-spacing:0.14em;
+    background:linear-gradient(135deg, var(--teal-soft), #DCEEE8); color:var(--teal-deep); padding:5px 12px;
+    border-radius:999px; margin-bottom:12px; border:1px solid rgba(30,138,115,0.15);
+  }
+  h1{ margin:0 0 6px; font-size:24px; font-weight:800; letter-spacing:-0.025em; color:var(--ink); transition:color 0.14s ease; }
+  h1:hover{ color:var(--teal-deep); }
+  .subtitle:hover{ color:var(--teal); }
+  .subtitle{ margin:0; font-size:12.5px; color:var(--ink-soft); letter-spacing:-0.005em; transition:color 0.14s ease; }
+  .header-right{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .pill{ display:flex; align-items:center; gap:7px; padding:8px 14px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+  .pill.live{ background:var(--teal-soft); color:var(--teal-deep); }
+  .pill.live .dot{ width:6px;height:6px;border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px rgba(30,138,115,0.18); }
+  .pill.count{ background:var(--ink); color:#fff; }
+  .pill.clock{ background:#fff; color:var(--ink-soft); border:2px solid var(--line); font-variant-numeric: tabular-nums; }
+
+  main{ padding:32px 36px 70px; max-width:1440px; margin:0 auto; }
+
+  .toolbar-row{ display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  .search-box{ position:relative; flex:1; min-width:240px; max-width:420px; }
+  .search-box input{
+    width:100%; padding:11px 14px; border:1.8px solid var(--line); border-radius:10px;
+    font-size:13.5px; font-family:inherit; background:#fff;
+  }
+  .search-box input:focus{ outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(30,138,115,0.1); }
+  .search-results{
+    position:absolute; top:calc(100% + 6px); left:0; right:0; background:#fff; border:1.8px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow-md); max-height:340px; overflow-y:auto; z-index:30; display:none;
+  }
+  .search-results.open{ display:block; }
+  .search-result-item{
+    padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--line-soft); display:flex;
+    justify-content:space-between; align-items:center; gap:10px;
+  }
+  .search-result-item:last-child{ border-bottom:none; }
+  .search-result-item:hover{ background:var(--teal-soft); }
+  .search-result-name{ font-size:13px; font-weight:800; color:var(--ink); display:flex; align-items:center; gap:6px; }
+  .search-result-loc{ font-size:11.5px; color:var(--ink-faint); font-weight:600; white-space:nowrap; }
+  .search-empty{ padding:16px; text-align:center; font-size:12.5px; color:var(--ink-faint); }
+
+  .view-toggle{ display:flex; gap:8px; }
+  .view-toggle .btn.inactive{ background:#fff; color:var(--ink-soft); border-color:var(--line); }
+
+  .work-table-wrap{ background:var(--panel); border:1.8px solid var(--line); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm); }
+  .work-table{ width:100%; border-collapse:collapse; }
+  .work-table thead th{
+    text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-faint);
+    padding:12px 14px; border-bottom:1.8px solid var(--line); font-weight:800; background:#FAFBFA;
+  }
+  .work-table tbody td{ padding:11px 14px; border-bottom:1px solid var(--line-soft); font-size:13px; }
+  .work-table tbody tr{ cursor:pointer; transition:background 0.12s ease; }
+  .work-table tbody tr:hover{ background:var(--teal-soft); }
+  .work-table tbody tr:last-child td{ border-bottom:none; }
+  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; }
+  .status-pill.overdue{ background:#FBEBE9; color:var(--danger); }
+  .status-pill.soon{ background:#FBEEDD; color:var(--amber); }
+  .status-pill.ok{ background:var(--teal-soft); color:var(--teal-deep); }
+  .status-pill.none{ background:var(--line-soft); color:var(--ink-faint); }
+
+  .work-group{
+    background:var(--panel); border:1.8px solid var(--line); border-radius:var(--radius-lg);
+    margin-bottom:10px; overflow:hidden; box-shadow:var(--shadow-sm);
+  }
+  .work-group-header{
+    display:flex; justify-content:space-between; align-items:center; padding:11px 16px;
+    background:#FAFBFA; border-bottom:1.8px solid var(--line-soft);
+  }
+  .wg-name{ font-size:13.5px; font-weight:800; color:var(--ink); display:flex; align-items:center; gap:6px; }
+  .wg-alert{ font-size:12px; }
+  .wg-count{ font-size:11px; font-weight:700; color:var(--ink-faint); background:var(--line-soft); padding:3px 9px; border-radius:999px; }
+  .work-group-rows{ display:flex; flex-direction:column; }
+  .wg-row{
+    display:flex; align-items:center; gap:12px; padding:8px 16px; cursor:pointer;
+    border-bottom:1px solid var(--line-soft); transition:background 0.12s ease;
+  }
+  .wg-row:last-child{ border-bottom:none; }
+  .wg-row:hover{ background:var(--teal-soft); }
+  .wg-row-crop{ flex:1.4; min-width:0; font-size:12.5px; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wg-row-loc{ flex:1; font-size:11.5px; color:var(--ink-soft); white-space:nowrap; }
+  .wg-row-date{ flex:1; font-size:11.5px; color:var(--ink-faint); white-space:nowrap; }
+
+  .work-layout{ display:flex; gap:16px; align-items:flex-start; }
+  .work-main{ flex:2; min-width:0; }
+  .work-mini-map{ flex:1; min-width:210px; max-width:260px; position:sticky; top:100px; }
+  .mini-map-box{
+    background:var(--panel); border:1.8px solid var(--line); border-radius:var(--radius-md);
+    padding:12px; box-shadow:var(--shadow-sm);
+  }
+  .mini-map-title{ font-size:11px; font-weight:800; color:var(--ink-soft); margin-bottom:10px; }
+  .mini-map-row{ display:flex; gap:4px; margin-bottom:4px; }
+  .mini-map-corridor{ height:8px; background:#EFF5EF; border:1px dashed #C4D2C8; border-radius:4px; margin:4px 0; }
+  .mini-tile{
+    flex:1; background:#FAFBFA; border:1.5px solid var(--line-soft); border-radius:7px; padding:7px 3px;
+    font-size:9px; font-weight:700; text-align:center; cursor:pointer; position:relative; color:var(--ink-soft);
+    line-height:1.3; transition:all 0.12s ease;
+  }
+  .mini-tile:hover{ border-color:var(--teal); }
+  .mini-tile.muted{ opacity:0.45; cursor:default; }
+  .mini-tile.muted:hover{ border-color:var(--line-soft); }
+  .mini-tile.alert{ border-color:var(--danger); background:#FBEBE9; color:var(--danger); }
+  .mini-tile.active{ border-color:var(--teal); background:var(--teal-soft); color:var(--teal-deep); }
+  .mini-tile-alert{ position:absolute; top:-6px; right:-4px; font-size:11px; }
+
+  .summary-badges{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px; }
+  .summary-badge{
+    display:flex; align-items:center; gap:8px; padding:12px 16px; border-radius:14px; cursor:pointer;
+    font-size:13px; font-weight:800; border:1.8px solid transparent; transition:transform 0.12s ease;
+  }
+  .summary-badge:hover{ transform:translateY(-1px); }
+  .summary-badge .num{ font-size:17px; font-weight:900; }
+  .summary-badge.overdue{ background:#FBEBE9; color:var(--danger); }
+  .summary-badge.soon{ background:#FBEEDD; color:var(--amber); }
+  .summary-badge.allgood{ background:var(--teal-soft); color:var(--teal-deep); }
+
+  .work-filter-bar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .work-filter-bar select{
+    padding:9px 12px; border:1.8px solid var(--line); border-radius:9px; font-size:12.5px; font-family:inherit;
+    background:#fff; color:var(--ink);
+  }
+  .work-filter-bar select:focus{ outline:none; border-color:var(--teal); }
+  .section-head{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+  .section-head h2{ display:flex; align-items:center; gap:8px; font-size:16.5px; font-weight:800; margin:0 0 4px; letter-spacing:-0.01em; }
+  .section-head p{ margin:0; font-size:12.5px; color:var(--ink-soft); }
+
+  .facility{
+    background:var(--panel); border:2px solid var(--line); border-radius:var(--radius-lg);
+    padding:22px; margin-bottom:38px; box-shadow:var(--shadow-sm);
+  }
+  .facility-row{ display:flex; gap:12px; margin-bottom:12px; }
+  .facility-row:last-child{ margin-bottom:0; }
+
+  .room-card{
+    flex:1; background:var(--panel); border:2px solid var(--line); border-radius:var(--radius-md);
+    padding:15px; cursor:pointer; transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+    display:flex; flex-direction:column; min-height:112px; box-shadow:var(--shadow-sm);
+  }
+  .room-card:hover{ border-color:var(--teal); box-shadow:var(--shadow-md); transform:translateY(-2px); }
+  .room-card.active{ border-color:var(--teal); background:var(--teal-soft); box-shadow:0 0 0 3px rgba(30,138,115,0.14); }
+  .room-card.empty-room{ background:#FAFBFA; }
+  .room-card.muted-room{ opacity:0.6; filter:saturate(0.5); }
+  .room-card.muted-room:hover{ opacity:0.85; }
+  .room-card.placeholder{
+    background:transparent; border-style:dashed; border-color:#C9D4CC; align-items:center; justify-content:center;
+    text-align:center; color:var(--ink-faint); box-shadow:none;
+  }
+  .room-card.placeholder:hover{ border-color:var(--teal); color:var(--teal); box-shadow:none; transform:none; }
+  .room-card.info-card{ background:#FAFBFA; cursor:default; align-items:center; justify-content:center; text-align:center; color:var(--ink-faint); box-shadow:none; }
+  .room-card.info-card:hover{ transform:none; box-shadow:none; border-color:var(--line); }
+
+  .top-row{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:11px; }
+  .room-icon{ width:30px; height:30px; border-radius:9px; background:var(--teal-soft); color:var(--teal-deep); display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .room-env-badge{
+    display:flex; flex-direction:row; gap:8px; font-size:10.5px; font-weight:800; color:var(--teal-deep);
+    background:var(--teal-soft); border-radius:9px; padding:6px 10px; white-space:nowrap;
+  }
+  .item-count-tag{ font-size:10px; font-weight:700; color:var(--ink-soft); background:var(--line-soft); padding:3px 8px; border-radius:999px; }
+  .rname{ font-size:13.5px; font-weight:800; margin-bottom:6px; letter-spacing:-0.01em; }
+  .room-summary{ font-size:11px; color:var(--teal-deep); line-height:1.6; font-weight:600; }
+  .room-summary .more{ color:var(--ink-faint); font-weight:500; }
+  .placeholder-label{ font-size:12.5px; font-weight:700; margin-bottom:4px; }
+  .placeholder-hint{ font-size:10.5px; }
+
+  .corridor-bar{
+    background:#FAFBFA; border:2px solid var(--line); border-radius:var(--radius-sm);
+    padding:13px; text-align:center; font-weight:800; letter-spacing:0.35em; color:var(--ink-faint); font-size:12px;
+    margin-bottom:12px;
+  }
+
+  .extra-head{ font-size:11.5px; font-weight:800; color:var(--ink-soft); margin:24px 0 10px; padding-top:16px; border-top:2px solid var(--line-soft); letter-spacing:0.02em; }
+  .extra-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr)); gap:12px; }
+
+  #detail{ display:none; }
+  #detail.open{ display:block; }
+  .detail-card{ background:var(--panel); border:2px solid var(--line); border-radius:var(--radius-lg); padding:26px 28px; box-shadow:var(--shadow-sm); }
+  .detail-head{ display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-bottom:18px; border-bottom:2px solid var(--line-soft); }
+  .detail-head h3{ margin:0 0 6px; font-size:20px; font-weight:800; letter-spacing:-0.01em; }
+  .detail-meta{ font-size:12.5px; color:var(--ink-soft); display:flex; gap:14px; flex-wrap:wrap; }
+
+  .env-info{
+    display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:12.5px; font-weight:700;
+    color:var(--ink); background:#F5F8F6; border:2px solid var(--line-soft); border-radius:10px;
+    padding:10px 14px; margin-bottom:18px;
+  }
+  .env-config{
+    display:flex; gap:12px; flex-wrap:wrap; align-items:end; background:#F5F8F6;
+    border:2px solid var(--line-soft); border-radius:10px; padding:12px 14px; margin-bottom:18px;
+  }
+  .env-config label{ font-size:10.5px; color:var(--ink-faint); font-weight:700; display:flex; flex-direction:column; gap:4px; }
+  .env-config input, .env-config select{ border:2px solid var(--line); border-radius:8px; padding:8px 9px; font-size:13px; font-family:inherit; }
+  .env-config input:focus, .env-config select:focus{ outline:none; border-color:var(--teal); }
+
+  button{ font-family:inherit; }
+  .btn{ padding:11px 18px; border-radius:9px; border:2px solid var(--line); background:#fff; color:var(--ink); font-size:13px; font-weight:700; cursor:pointer; transition:all 0.14s ease; }
+  .btn:hover{ border-color:var(--teal); color:var(--teal-deep); background:var(--teal-soft); }
+  .btn.primary{ background:var(--teal); border-color:var(--teal); color:#fff; }
+  .btn.primary:hover{ background:var(--teal-deep); border-color:var(--teal-deep); color:#fff; }
+  .btn.danger-text{ color:var(--danger); border-color:transparent; background:transparent; padding:6px 10px; }
+  .btn.danger-text:hover{ background:#FBEBE9; color:var(--danger); }
+  .btn.small{ padding:6px 10px; font-size:11.5px; }
+  .btn.close-x{ border:none; background:transparent; font-size:17px; color:var(--ink-faint); padding:4px 8px; }
+  .btn.close-x:hover{ background:var(--line-soft); color:var(--ink); }
+
+  table{ width:100%; border-collapse:collapse; }
+  thead th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-faint); padding:10px 12px; border-bottom:2px solid var(--line); font-weight:800; }
+  tbody td{ padding:10px 12px; border-bottom:2px solid var(--line-soft); font-size:13.5px; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover td{ background:#FAFBFA; }
+  .editable{ border:2px solid transparent; background:transparent; font-size:13.5px; font-family:inherit; padding:5px 7px; border-radius:6px; width:100%; color:var(--ink); }
+  .editable:hover{ background:var(--line-soft); }
+  .editable:focus{ outline:none; border-color:var(--teal); background:#fff; box-shadow:0 0 0 3px rgba(30,138,115,0.1); }
+  .qty-cell{ display:flex; align-items:center; gap:6px; }
+  .qty-cell input{ width:56px; text-align:center; }
+  .step-btn{ width:30px;height:30px; border-radius:8px; border:2px solid var(--line); background:#fff; cursor:pointer; font-size:15px; line-height:1; color:var(--ink-soft); }
+  .step-btn:hover{ border-color:var(--teal); color:var(--teal); }
+  .expiry-warn{ color:var(--amber); font-weight:700; }
+  .expiry-over{ color:var(--danger); font-weight:700; }
+  .empty-materials{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:13px; }
+  .add-row-btn{ margin-top:14px; padding:13px 16px; border-radius:9px; border:1.5px dashed var(--line); background:transparent; color:var(--ink-soft); font-size:13px; font-weight:700; cursor:pointer; width:100%; transition:all 0.14s ease; }
+  .add-row-btn:hover{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); }
+
+  .floor-band{ margin-bottom:20px; }
+  .floor-band-label{
+    font-size:11.5px; font-weight:800; color:var(--teal-deep); letter-spacing:0.06em;
+    margin-bottom:9px; display:flex; align-items:center; gap:6px;
+  }
+  .floor-band-label::before{ content:''; width:7px; height:7px; border-radius:2px; background:var(--teal); display:inline-block; }
+  .struct-cols{ display:grid; gap:14px; }
+  .struct-col{
+    background:#FAFBFA; border:2px solid var(--line-soft); border-radius:var(--radius-sm); padding:16px; min-width:0;
+    transition:border-color 0.14s ease;
+  }
+  .struct-col:hover{ border-color:var(--line); }
+  .bed-col-title{ font-size:15.5px; font-weight:800; margin-bottom:13px; text-align:center; color:var(--ink); letter-spacing:-0.01em; }
+  .bed-floor-section{ margin-bottom:0; padding:12px; border-radius:12px; }
+  .bed-floor-section + .bed-floor-section{ margin-top:9px; border-top:1.8px solid var(--line); padding-top:15px; }
+  .bed-floor-label{
+    font-size:12.5px; font-weight:800; color:var(--ink-faint); letter-spacing:0.06em;
+    margin-bottom:9px; display:flex; align-items:center; gap:5px; text-transform:uppercase;
+  }
+
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
+  .struct-col-title{ font-size:11px; font-weight:700; color:var(--ink-soft); margin-bottom:8px; text-align:center; }
+  .batch-card{
+    background:#fff; border:2px solid var(--line-soft); border-radius:12px; padding:13px; margin-bottom:10px;
+    display:flex; flex-direction:column; gap:8px; position:relative; box-shadow:var(--shadow-sm);
+    transition:box-shadow 0.14s ease;
+  }
+  .batch-card:hover{ box-shadow:0 4px 12px rgba(15,60,48,0.08); }
+  .batch-card input, .batch-card select{
+    border:2px solid var(--line); background:#fff; font-size:13px; font-family:inherit;
+    padding:9px 10px; border-radius:8px; width:100%; color:var(--ink);
+  }
+  .batch-card input:focus, .batch-card select:focus{ outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(30,138,115,0.1); }
+  .batch-card .row2{ display:flex; gap:7px; }
+  .batch-card .row2 > *{ flex:1; min-width:0; }
+  .batch-card label{ font-size:11px; color:var(--ink-faint); display:flex; flex-direction:column; gap:4px; font-weight:600; }
+  .batch-actions{ display:flex; gap:8px; margin-top:2px; }
+  .batch-save-btn{
+    flex:1; padding:10px; border-radius:9px; border:none; background:var(--teal); color:#fff;
+    font-size:12.5px; font-weight:800; cursor:pointer; transition:background 0.14s ease;
+  }
+  .batch-save-btn:hover{ background:var(--teal-deep); }
+  .batch-save-btn.saved{ background:var(--ink-faint); }
+  .batch-del-btn{
+    padding:10px 14px; border-radius:9px; border:2px solid var(--line); background:#fff; color:var(--danger);
+    font-size:12.5px; font-weight:700; cursor:pointer; transition:all 0.14s ease;
+  }
+  .batch-del-btn:hover{ background:#FBEBE9; border-color:#FBEBE9; }
+  .add-batch-btn{
+    width:100%; padding:12px; border-radius:9px; border:1.5px dashed var(--line); background:transparent;
+    color:var(--ink-faint); font-size:12px; font-weight:700; cursor:pointer; transition:all 0.14s ease;
+  }
+  .add-batch-btn:hover{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); }
+  .card-more-btn{
+    align-self:flex-start; border:none; background:transparent; color:var(--teal-deep); font-size:11.5px;
+    font-weight:800; cursor:pointer; padding:4px 0; margin-top:2px;
+  }
+  .card-more-btn:hover{ text-decoration:underline; }
+  .card-extra{ display:flex; flex-direction:column; gap:8px; padding-top:8px; border-top:1.8px dashed var(--line); }
+  .add-batch-btn.prominent{
+    border:none; background:var(--teal); color:#fff; font-size:13px; font-weight:800; padding:13px;
+    box-shadow:var(--shadow-sm);
+  }
+  .add-batch-btn.prominent:hover{ background:var(--teal-deep); color:#fff; box-shadow:var(--shadow-md); }
+
+  .tray-row{ align-items:center; margin-bottom:6px; }
+  .tray-row .row2{ margin:0; }
+  .tray-remove-btn{
+    width:34px; height:34px; flex:0 0 34px; border-radius:8px; border:2px solid var(--line); background:#fff;
+    color:var(--ink-faint); cursor:pointer; font-size:13px;
+  }
+  .tray-remove-btn:hover{ border-color:var(--danger); color:var(--danger); }
+
+  .room-card{ position:relative; overflow:hidden; padding-left:19px; }
+  .crop-color-bar{ position:absolute; left:0; top:0; bottom:0; width:5px; }
+
+  .crop-legend{ display:flex; flex-wrap:wrap; gap:7px; margin-bottom:18px; }
+  .legend-chip{
+    display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--ink-soft);
+    background:#fff; border:2px solid var(--line); border-radius:999px; padding:5px 11px 5px 7px;
+  }
+  .legend-dot{ width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+  .crop-dot{ width:7px; height:7px; border-radius:2px; flex-shrink:0; display:inline-block; }
+
+  .inner-corridor{
+    background:repeating-linear-gradient(135deg, #F5F8F6, #F5F8F6 8px, #EEF3F0 8px, #EEF3F0 16px);
+    border:1px dashed #C4D2C8; border-radius:var(--radius-sm);
+    padding:11px 16px 11px 40px; position:relative; margin:2px 0 16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .inner-corridor .entrance-label{
+    position:absolute; left:12px; top:50%; transform:translateY(-50%);
+    font-size:10.5px; font-weight:800; color:var(--ink-faint); letter-spacing:0.05em;
+  }
+  .inner-corridor .corridor-text{
+    font-size:11px; font-weight:800; letter-spacing:0.4em; color:var(--ink-faint);
+  }
+
+  .bed-workspace{ display:flex; gap:20px; align-items:flex-start; }
+  .bed-master{ flex:1.5; min-width:0; }
+  .bed-side-panel{
+    flex:1; min-width:260px; background:#FAFBFA; border:2px solid var(--line-soft);
+    border-radius:var(--radius-md); padding:18px; position:sticky; top:100px;
+  }
+  .panel-title{ font-size:15px; font-weight:800; margin-bottom:14px; letter-spacing:-0.01em; }
+  .panel-placeholder{ text-align:center; color:var(--ink-faint); font-size:12.5px; padding:44px 10px; line-height:1.9; }
+
+  .bed-note-box{
+    margin-top:16px; padding-top:16px; border-top:2px solid var(--line);
+  }
+  .bed-note-label{ font-size:11px; font-weight:800; color:var(--ink-soft); margin-bottom:8px; }
+  .bed-note-box input[type=date]{
+    border:2px solid var(--line); border-radius:9px; padding:8px 10px; font-size:13px; font-family:inherit;
+    color:var(--ink); width:auto;
+  }
+  .bed-note-box input[type=date]:focus{ outline:none; border-color:var(--teal); }
+
+  .mini-calendar{ margin-bottom:10px; }
+  .cal-header{ display:flex; justify-content:space-between; align-items:center; font-size:12.5px; font-weight:800; margin-bottom:8px; color:var(--ink); }
+  .cal-header button{ border:2px solid var(--line); background:#fff; border-radius:6px; width:24px; height:24px; cursor:pointer; color:var(--ink-soft); font-size:13px; }
+  .cal-header button:hover{ border-color:var(--teal); color:var(--teal); }
+  .cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); font-size:10px; color:var(--ink-faint); text-align:center; margin-bottom:4px; font-weight:700; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .cal-cell{ position:relative; text-align:center; font-size:11.5px; padding:7px 0; border-radius:7px; cursor:pointer; color:var(--ink); }
+  .cal-cell.empty{ cursor:default; }
+  .cal-cell:not(.empty):hover{ background:var(--line-soft); }
+  .cal-cell.today{ font-weight:800; color:var(--teal-deep); box-shadow:inset 0 0 0 1px var(--teal); }
+  .cal-cell.selected{ background:var(--teal); color:#fff; font-weight:800; }
+  .cal-dot{ position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:var(--teal); }
+  .cal-cell.selected .cal-dot{ background:#fff; }
+  .cal-selected-date{ font-size:11.5px; color:var(--ink-faint); font-weight:700; margin-bottom:8px; }
+  .bed-note-box textarea{
+    width:100%; min-height:80px; border:2px solid var(--line); border-radius:10px; padding:10px 12px;
+    font-size:13px; font-family:inherit; resize:vertical; color:var(--ink); margin-bottom:8px;
+  }
+  .bed-note-box textarea:focus{ outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(30,138,115,0.1); }
+  .bed-note-text{
+    font-size:13px; color:var(--ink); line-height:1.6; background:#F5F8F6; border:2px solid var(--line-soft);
+    border-radius:10px; padding:12px 14px; white-space:pre-wrap;
+  }
+
+  .struct-col.mini{ /* 클릭은 층(floor) 단위로 이동 */ }
+  .struct-col.mini:hover{ border-color:var(--line); }
+  .struct-col.selected{ border-color:var(--teal); background:var(--teal-soft); box-shadow:0 0 0 2px rgba(30,138,115,0.16); }
+  .mini-chip-list{ display:flex; flex-direction:column; gap:5px; }
+  .mini-chip{
+    display:flex; align-items:flex-start; gap:6px; font-size:12px; font-weight:700; color:var(--ink);
+    background:#fff; border:2px solid var(--line-soft); border-radius:8px; padding:7px 9px; min-width:0;
+  }
+  .mini-chip .crop-dot{ margin-top:3px; flex-shrink:0; }
+  .mini-chip-text{ min-width:0; flex:1; overflow:hidden; }
+  .mini-chip-text .mc-line{ font-size:14.5px; font-weight:800; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mini-chip-text .mc-sub{ font-size:12.5px; font-weight:600; color:var(--ink-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .empty-chip{ font-size:11.5px; color:var(--ink-faint); padding:6px 2px; }
+
+  .bed-floor-section.clickable{
+    cursor:pointer; transition:background 0.12s ease;
+  }
+  .bed-floor-section.clickable:hover{ background:#fff; }
+  .bed-floor-section.floor-selected{ background:var(--teal-soft); box-shadow:0 0 0 2px rgba(30,138,115,0.18); }
+
+  .progress-wrap{ margin-top:5px; }
+  .progress-track{ height:5px; border-radius:999px; background:var(--line-soft); overflow:hidden; }
+  .progress-fill{ height:100%; border-radius:999px; transition:width 0.3s ease; }
+  .progress-label{ font-size:9.5px; color:var(--ink-faint); margin-top:3px; text-align:right; }
+
+  @media (max-width: 900px){
+    .bed-workspace{ flex-direction:column; }
+    .bed-side-panel{ position:static; width:100%; }
+  }
+
+  .modal-overlay{ position:fixed; inset:0; background:rgba(15,25,20,0.45); display:none; align-items:center; justify-content:center; z-index:50; backdrop-filter:blur(2px); }
+  .modal-overlay.open{ display:flex; }
+  .modal{ background:#fff; border-radius:18px; padding:26px; width:320px; box-shadow:var(--shadow-lg); }
+  .modal h3{ margin:0 0 16px; font-size:16px; font-weight:800; }
+  .modal input, .modal select{
+    width:100%; padding:10px 12px; border:2px solid var(--line); border-radius:9px;
+    font-size:13.5px; margin-bottom:11px; font-family:inherit;
+  }
+  .modal input:focus, .modal select:focus{ outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(30,138,115,0.1); }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+
+  .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:10px 20px; border-radius:999px; font-size:12.5px; font-weight:600; opacity:0; transition:all 0.25s ease; pointer-events:none; z-index:100; box-shadow:var(--shadow-lg); }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width: 900px){
+    .facility-row{ flex-wrap:wrap; }
+    .room-card{ flex:1 1 45%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <span class="badge">⛭ FIELD CROP DEVELOPMENT DIVISION</span>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="width:4px; height:22px; border-radius:3px; background:linear-gradient(180deg, var(--teal), var(--teal-deep)); display:inline-block; flex-shrink:0;"></span>
+        <h1 onclick="goHome()" style="cursor:pointer;">밭작물개발과 스피드브리딩 시설 통합관리</h1>
+      </div>
+      <p class="subtitle" style="margin-left:14px; cursor:pointer;" onclick="goHome()">실내 배치도 기반 실시간 모니터링</p>
+    </div>
+    <div class="header-right">
+      <span class="pill live"><span class="dot"></span><span id="statusText">연결 중...</span></span>
+      <span class="pill count" id="countPill">총 0개 재료 관리 중</span>
+      <span class="pill clock" id="clock">--:--:--</span>
+      <button class="btn" id="adminToggleBtn" onclick="toggleAdmin()">🔒 보기 전용</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar-row">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 계통번호·작물·교배조합 검색" oninput="handleSearchInput(this.value)" onfocus="handleSearchInput(this.value)" autocomplete="off" />
+      <div id="searchResults" class="search-results"></div>
+    </div>
+    <div class="view-toggle">
+      <button class="btn primary" id="viewSpaceBtn" onclick="switchView('space')">🗺️ 공간 뷰</button>
+      <button class="btn" id="viewWorkBtn" onclick="switchView('work')">📋 작업 뷰</button>
+    </div>
+  </div>
+
+  <div id="summaryBadgesWrap"></div>
+
+  <div id="spaceViewWrap">
+    <div class="section-head">
+      <div>
+        <h2>🗺️ 전체 시설 배치도</h2>
+        <p>원하는 방을 클릭하면 재료 목록을 확인·수정할 수 있어요.</p>
+      </div>
+      <button class="btn" id="addExtraRoomBtn" onclick="openRoomModal()">+ 목록에 없는 방 추가</button>
+      <button class="btn" id="excelSampleBtn" onclick="downloadSampleExcel()">📄 엑셀 양식 다운로드</button>
+      <button class="btn primary" id="excelUploadBtn" onclick="document.getElementById('excelFileInput').click()">📥 엑셀 업로드</button>
+      <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none;" onchange="handleExcelUpload(event)" />
+    </div>
+
+    <div class="facility" id="facility"></div>
+
+    <div id="detail"></div>
+  </div>
+
+  <div id="workViewWrap" style="display:none;">
+    <div class="section-head">
+      <div>
+        <h2>📋 작업 뷰</h2>
+        <p>수확예정일이 가까운 순으로 전체 계통을 한눈에 볼 수 있어요. 행을 클릭하면 해당 위치로 이동해요.</p>
+      </div>
+    </div>
+    <div id="workFilterBar" class="work-filter-bar"></div>
+    <div class="work-layout">
+      <div id="workTableWrap" class="work-main"></div>
+      <div id="workMiniMap" class="work-mini-map"></div>
+    </div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="roomModalOverlay">
+  <div class="modal">
+    <h3>새 방 추가</h3>
+    <input id="newRoomName" placeholder="방 이름" />
+    <input id="newRoomLocation" placeholder="위치 (예: 2층 좌측)" />
+    <input id="newRoomManager" placeholder="담당자" />
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRoomModal()">취소</button>
+      <button class="btn primary" onclick="createRoom()">추가</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historyModalOverlay">
+  <div class="modal" style="width:340px; max-height:80vh; overflow-y:auto;">
+    <h3>🕓 세대 이력</h3>
+    <div id="historyModalList"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeHistoryModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="batchLocModalOverlay">
+  <div class="modal" style="width:380px; max-height:82vh; overflow-y:auto;">
+    <h3 id="batchLocModalTitle">여러 위치에 한번에 등록</h3>
+    <div id="batchLocFields"></div>
+    <div style="font-size:11px; font-weight:800; color:var(--ink-soft); margin:14px 0 6px;">등록할 위치 선택</div>
+    <div id="batchLocCheckboxes" style="max-height:200px; overflow-y:auto; border:2px solid var(--line); border-radius:8px; padding:10px;"></div>
+    <div class="modal-actions">
+      <button class="btn primary" onclick="submitBatchLocModal()">일괄 등록</button>
+      <button class="btn" onclick="closeBatchLocModal()">취소</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://yfnssmflmzebrfdykbme.supabase.co";
+const SUPABASE_KEY = "sb_publishable_L3ZYs61PsP_Mn1iRnA89PA_-LbEWBbW";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 고정 배치도 구조 (참고 도면과 동일)
+const ROW1 = ['세대단축실 1','세대단축실 2','세대단축실 3','세대단축실 4','고온검정실'];
+const ROW1_INFO = '조사실';
+const ROW2 = ['창고','인공교배실 1','인공교배실 2','조사실','조사실'];
+const FIXED_NAMES = new Set([...ROW1, ...ROW2]);
+const DEFAULT_ROOM_CONFIG = {
+  '세대단축실 1': { bed_count:4, bed_floors:2, tray_capacity:6 },
+  '세대단축실 2': { bed_count:4, bed_floors:2, tray_capacity:6 },
+  '세대단축실 3': { bed_count:4, bed_floors:2, tray_capacity:6 },
+  '고온검정실':   { bed_count:6, bed_floors:2, tray_capacity:3 },
+  '인공교배실 1': { bed_count:4, bed_floors:1, tray_capacity:null },
+  '인공교배실 2': { bed_count:10, bed_floors:2, tray_capacity:3 }
+};
+const ROOM_COLS_PER_ROW = {
+  '세대단축실 1': 2, '세대단축실 2': 2, '세대단축실 3': 2,
+  '고온검정실': 3,
+  '인공교배실 1': 2,
+  '인공교배실 2': 5
+};
+const ROOM_ICONS = {
+  '창고':'📦', '조사실':'🔍',
+  '세대단축실 1':'🌱', '세대단축실 2':'🌱', '세대단축실 3':'🌱', '세대단축실 4':'🌱',
+  '고온검정실':'🔥',
+  '인공교배실 1':'🌱', '인공교배실 2':'🌱'
+};
+const MUTED_ROOMS = new Set(['창고','조사실','세대단축실 4']);
+const ROOM_DISPLAY_LABELS = { '세대단축실 4': '세대단축실4번(조사실)' };
+// PPT 도면과 동일한 실제 베드 번호 배치 (통로 기준 위/아래 순서)
+const ROOM_BED_LAYOUT = {
+  '세대단축실 1': { top:[1,2], bottom:[4,3] },
+  '세대단축실 2': { top:[1,2], bottom:[4,3] },
+  '세대단축실 3': { top:[1,2], bottom:[4,3] },
+  '고온검정실':   { top:[1,2,3], bottom:[6,5,4] },
+  '인공교배실 2': { top:[6,7,8,9,10], bottom:[1,2,3,4,5] }
+};
+// 방별 베드영역:상세패널 비율 (기본 1.5:1)
+const ROOM_WORKSPACE_RATIO = {
+  '인공교배실 2': { master:2.4, panel:0.8 }
+};
+
+let rooms = [];
+let materials = [];
+let bedNotes = [];
+let generationHistory = [];
+let cropProfiles = {};
+let activeRoomId = null;
+let selectedBedNo = null;
+let selectedFloor = null;
+let calendarViewMonth = null;
+let selectedNoteDate = null;
+let userRole = 'viewer';
+let viewMode = 'space'; // 'space' | 'work'
+let workFilterRoom = '';
+let workFilterCrop = '';
+let workFilterStatus = ''; // 'viewer' | 'note' | 'admin'
+let isAdmin = false;       // 전체 관리자 여부 (베드/작물/방 편집 가능)
+let canEditNotes = false;  // 작업기록(메모) 편집 가능 여부 (note 또는 admin)
+const NOTE_PASSWORD = "note1234";   // 작업기록 전용 비밀번호 - 원하는 걸로 바꾸세요
+const ADMIN_PASSWORD = "admin1234"; // 전체 관리자 비밀번호 - 원하는 걸로 바꾸세요
+
+function toggleAdmin(){
+  if(userRole !== 'viewer'){
+    userRole = 'viewer';
+    isAdmin = false;
+    canEditNotes = false;
+    showToast('보기 전용 모드로 전환됐어요');
+  } else {
+    const pw = prompt('비밀번호를 입력하세요\n(작업기록 전용 비밀번호 또는 전체 관리자 비밀번호)');
+    if(pw === null) return;
+    if(pw === ADMIN_PASSWORD){
+      userRole = 'admin'; isAdmin = true; canEditNotes = true;
+      showToast('전체 관리자 모드로 전환됐어요 · 공간 뷰로 이동해요');
+      switchView('space');
+    } else if(pw === NOTE_PASSWORD){
+      userRole = 'note'; isAdmin = false; canEditNotes = true;
+      showToast('작업기록 작성 모드로 전환됐어요 · 작업 뷰로 이동해요');
+      switchView('work');
+    } else {
+      alert('비밀번호가 틀렸어요');
+      return;
+    }
+  }
+  updateAdminUI();
+  renderFacility();
+  renderDetail();
+}
+function updateAdminUI(){
+  const btn = document.getElementById('adminToggleBtn');
+  const labels = {
+    viewer: '🔒 보기 전용',
+    note: '📝 작업기록 작성 모드 (끄기)',
+    admin: '🔓 전체 관리자 모드 (끄기)'
+  };
+  btn.textContent = labels[userRole];
+  document.getElementById('addExtraRoomBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('excelSampleBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('excelUploadBtn').style.display = isAdmin ? '' : 'none';
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+function setStatus(live){
+  document.getElementById('statusText').textContent = live ? '실시간 클라우드 연동 중' : '연결 끊김 - 재시도 중';
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+const CROP_OPTIONS = ['콩','녹두','참깨','들깨'];
+const CROP_COLORS = { '콩':'#3B82F6', '녹두':'#9333EA', '참깨':'#D97706', '들깨':'#0D9488' };
+const CROP_PALETTE = ['#1F8A76','#C97A2B','#3B6FB6','#8A4FB0','#B5453B','#4C8C3C','#A6763B','#5D6B7A','#5A4FCF','#C0587A'];
+function cropColor(name){
+  if(!name) return '#9AA6A0';
+  if(CROP_COLORS[name]) return CROP_COLORS[name];
+  let h = 0;
+  for(let i=0;i<name.length;i++){ h = (h*31 + name.charCodeAt(i)) % 997; }
+  return CROP_PALETTE[h % CROP_PALETTE.length];
+}
+function addDays(dateStr, days){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + Number(days));
+  return d.toISOString().slice(0,10);
+}
+function growthProgress(sowing, harvest){
+  if(!sowing || !harvest) return null;
+  const start = new Date(sowing + 'T00:00:00').getTime();
+  const end = new Date(harvest + 'T00:00:00').getTime();
+  const now = Date.now();
+  if(end <= start) return null;
+  return Math.max(0, Math.min(100, (now - start) / (end - start) * 100));
+}
+function daysLeftLabel(harvest){
+  if(!harvest) return '';
+  const end = new Date(harvest + 'T00:00:00').getTime();
+  const now = new Date(); now.setHours(0,0,0,0);
+  const diff = Math.round((end - now.getTime()) / 86400000);
+  if(diff > 0) return `수확까지 ${diff}일`;
+  if(diff === 0) return '수확 예정일';
+  return `수확일 ${Math.abs(diff)}일 지남`;
+}
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+}
+setInterval(tickClock, 1000); tickClock();
+
+async function loadAll(){
+  const { data: roomData, error: e1 } = await sb.from('rooms').select('*').order('updated_at', {ascending:false});
+  const { data: matData, error: e2 } = await sb.from('materials').select('*').order('updated_at', {ascending:false});
+  const { data: profileData, error: e3 } = await sb.from('crop_profiles').select('*');
+  const { data: noteData, error: e4 } = await sb.from('bed_notes').select('*');
+  const { data: histData, error: e5 } = await sb.from('generation_history').select('*');
+  if(e1 || e2){
+    console.error(e1, e2, e3, e4, e5);
+    setStatus(false);
+    if(!window._loadErrorShown){
+      window._loadErrorShown = true;
+      alert('데이터를 불러오지 못했어요!\n\n' + (e1?.message || e2?.message || JSON.stringify(e1||e2)));
+    }
+    return;
+  }
+  rooms = roomData || [];
+  materials = matData || [];
+  bedNotes = noteData || [];
+  generationHistory = histData || [];
+  cropProfiles = {};
+  (profileData||[]).forEach(p=>{ cropProfiles[p.name] = p.typical_days; });
+  document.getElementById('countPill').textContent = `총 ${materials.length}개 재료 관리 중`;
+  renderFacility();
+  renderDetail();
+  renderSummaryBadges();
+  if(viewMode==='work') renderWorkView();
+  setStatus(true);
+}
+
+function cardHtmlFor(name){
+  const room = rooms.find(r=> r.name === name);
+  const displayLabel = ROOM_DISPLAY_LABELS[name] || name;
+  if(MUTED_ROOMS.has(name)){
+    if(!room){
+      return `<div class="room-card info-card"><div>${escapeHtml(displayLabel)}<br><span style="font-size:11px;">미등록</span></div></div>`;
+    }
+    const items = materials.filter(m=>m.room_id===room.id);
+    return `<div class="room-card muted-room" style="cursor:default;">
+      <div class="top-row">
+        <div class="room-icon">${ROOM_ICONS[name] || '🧪'}</div>
+        <span class="item-count-tag">${items.length}종</span>
+      </div>
+      <div class="rname">${escapeHtml(displayLabel)}</div>
+    </div>`;
+  }
+  if(!room){
+    if(!isAdmin){
+      return `<div class="room-card info-card"><div>${escapeHtml(name)}<br><span style="font-size:11px;">미등록</span></div></div>`;
+    }
+    return `<div class="room-card placeholder" onclick="quickCreateRoom('${name.replace(/'/g,"")}')">
+      <div class="placeholder-label">${escapeHtml(name)}</div>
+      <div class="placeholder-hint">+ 클릭해서 방 만들기</div>
+    </div>`;
+  }
+  const items = materials.filter(m=>m.room_id===room.id);
+  const total = items.reduce((s,m)=> s + (Number(m.quantity)||0), 0);
+  const topItems = items.slice(0,2).map(m=> `${escapeHtml(m.name)} (${m.quantity ?? 0}${escapeHtml(m.unit||'')})`);
+  const moreCount = items.length - topItems.length;
+  const summary = items.length
+    ? topItems.join(', ') + (moreCount>0 ? `<span class="more"> 외 ${moreCount}종</span>` : '')
+    : '등록된 재료 없음';
+  const cropNames = [...new Set(items.map(m=>m.name).filter(Boolean))];
+  const isSimpleMatch = room.primary_crop && (cropNames.length===0 || (cropNames.length===1 && cropNames[0]===room.primary_crop));
+
+  let colorBarHtml = '';
+  let dotsHtml = '';
+  let displayName = escapeHtml(room.name);
+  let displaySummary = summary;
+  let countTagHtml = `<span class="item-count-tag">${items.length}종 · ${total}개</span>`;
+
+  if(isSimpleMatch){
+    colorBarHtml = `<div class="crop-color-bar" style="background:${cropColor(room.primary_crop)};"></div>`;
+    displayName = `${escapeHtml(room.name)} <span style="font-weight:600; color:var(--ink-faint);">· ${escapeHtml(room.primary_crop)}</span>`;
+    countTagHtml = '';
+    if(items.length){
+      const groups = {};
+      items.forEach(m=>{
+        const key = `${m.cross_combo||'-'}|${m.generation||'-'}`;
+        if(!groups[key]) groups[key] = { cross: m.cross_combo||'-', gen: m.generation||'-', qty:0 };
+        groups[key].qty += Number(m.quantity)||0;
+      });
+      displaySummary = Object.values(groups).map(g=>
+        `<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; min-width:0;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;" title="${escapeHtml(g.cross)} · ${escapeHtml(g.gen)}">${escapeHtml(g.cross)} · ${escapeHtml(g.gen)}</span><span style="font-weight:700; flex-shrink:0;">${g.qty}개</span></div>`
+      ).join('');
+    } else {
+      displaySummary = '등록된 재료 없음';
+    }
+  } else if(cropNames.length === 1){
+    colorBarHtml = `<div class="crop-color-bar" style="background:${cropColor(cropNames[0])};"></div>`;
+    dotsHtml = `<div style="display:flex; gap:4px; margin-top:6px;">${cropNames.map(n=>`<span class="crop-dot" style="background:${cropColor(n)}; width:9px; height:9px;" title="${escapeHtml(n)}"></span>`).join('')}</div>`;
+  } else if(cropNames.length > 1){
+    const n = cropNames.length;
+    const stops = cropNames.map((c,i)=>{
+      const col = cropColor(c);
+      const from = (i/n*100).toFixed(2), to = ((i+1)/n*100).toFixed(2);
+      return `${col} ${from}%, ${col} ${to}%`;
+    }).join(', ');
+    colorBarHtml = `<div class="crop-color-bar" style="background:linear-gradient(to bottom, ${stops});"></div>`;
+    dotsHtml = `<div style="display:flex; gap:4px; margin-top:6px;">${cropNames.map(n=>`<span class="crop-dot" style="background:${cropColor(n)}; width:9px; height:9px;" title="${escapeHtml(n)}"></span>`).join('')}</div>`;
+    if(room.primary_crop) displayName = `${escapeHtml(room.name)} <span style="font-weight:600; color:var(--danger);">⚠ 예외</span>`;
+  }
+  const iconHtml = (room.temperature!=null || (room.light_start && room.light_end))
+    ? `<div class="room-env-badge">
+        <span>🌡️ ${room.temperature!=null? room.temperature+'°':'-'}</span>
+        <span>☀️ ${room.light_start && room.light_end ? lightDurationLabel(room.light_start, room.light_end) : '-'}</span>
+      </div>`
+    : `<div class="room-icon">${ROOM_ICONS[room.name] || '🧪'}</div>`;
+  return `
+    <div class="room-card ${room.id===activeRoomId?'active':''} ${items.length===0?'empty-room':''} ${MUTED_ROOMS.has(room.name)?'muted-room':''}" onclick="selectRoom('${room.id}')">
+      ${colorBarHtml}
+      <div class="top-row">
+        ${iconHtml}
+        ${countTagHtml}
+      </div>
+      <div class="rname">${displayName}</div>
+      <div class="room-summary">${displaySummary}</div>
+      ${dotsHtml}
+    </div>
+  `;
+}
+
+function renderFacility(){
+  const wrap = document.getElementById('facility');
+  const row1Html = ROW1.map(cardHtmlFor).join('') + cardHtmlFor(ROW1_INFO);
+  const row2Html = ROW2.map(cardHtmlFor).join('');
+
+  const extraRooms = rooms.filter(r=> !FIXED_NAMES.has(r.name));
+  const extraHtml = extraRooms.length ? `
+    <div class="extra-head">추가로 등록한 방</div>
+    <div class="extra-grid">${extraRooms.map(r=>cardHtmlFor(r.name)).join('')}</div>
+  ` : '';
+
+  wrap.innerHTML = `
+    <div class="facility-row">${row1Html}</div>
+    <div class="corridor-bar">통&nbsp;&nbsp;&nbsp;&nbsp;로</div>
+    <div class="facility-row">${row2Html}</div>
+    ${extraHtml}
+  `;
+}
+
+const EXCEL_HEADERS = ['방이름','베드번호','층','작물','계통번호','교배조합','세대','교배목적','트레이1종류','트레이1개수','트레이2종류','트레이2개수','개체수','파종일','예상재배기간(일)','수확예정일'];
+
+function downloadSampleExcel(){
+  const sample = [
+    ['세대단축실 1','1','1층','콩','YPL277','남천/YCPL547','F3','내병성 검정용','32구 트레이','12','','','300','2026-07-23','89',''],
+    ['고온검정실','2','2층','들깨','GG-102','','F2','고온검정 예비실험','50구 트레이','4','','','120','2026-08-01','',''],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([EXCEL_HEADERS, ...sample]);
+  ws['!cols'] = EXCEL_HEADERS.map(()=>({wch:14}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '작물배치');
+  XLSX.writeFile(wb, '스피드브리딩_업로드양식.xlsx');
+}
+
+function normalizeExcelDate(v){
+  if(!v) return null;
+  if(v instanceof Date){
+    const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v).trim();
+  if(!s) return null;
+  const m = s.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  if(m){ return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`; }
+  return null;
+}
+
+async function handleExcelUpload(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const btn = document.getElementById('excelUploadBtn');
+  const originalText = btn.textContent;
+  btn.textContent = '처리 중...';
+  btn.disabled = true;
+
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array', cellDates:true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+
+    if(!rows.length){ alert('엑셀에 데이터가 없어요.'); return; }
+
+    let updated=0, inserted=0;
+    const errors=[];
+
+    for(let i=0;i<rows.length;i++){
+      const r = rows[i];
+      const rowNum = i+2;
+      const roomName = String(r['방이름']||'').trim();
+      if(!roomName) continue;
+
+      const room = rooms.find(x=>x.name===roomName);
+      if(!room){ errors.push(`${rowNum}행: "${roomName}" 방을 찾을 수 없어요`); continue; }
+
+      const structure_no = r['베드번호']===''? null : parseInt(r['베드번호']);
+      const floor = String(r['층']||'').trim() || null;
+      const name = String(r['작물']||'').trim() || null;
+      const line_no = String(r['계통번호']||'').trim() || null;
+      const cross_combo = String(r['교배조합']||'').trim() || null;
+      const generation = String(r['세대']||'').trim() || null;
+      const purpose = String(r['교배목적']||'').trim() || null;
+      const quantity = r['개체수']===''? null : Number(r['개체수']);
+
+      const trays = [];
+      const t1type = String(r['트레이1종류']||'').trim();
+      if(t1type) trays.push({ type:t1type, count: r['트레이1개수']===''?null:Number(r['트레이1개수']) });
+      const t2type = String(r['트레이2종류']||'').trim();
+      if(t2type) trays.push({ type:t2type, count: r['트레이2개수']===''?null:Number(r['트레이2개수']) });
+
+      let sowing_date = normalizeExcelDate(r['파종일']);
+      let expected_days = r['예상재배기간(일)']===''? null : parseInt(r['예상재배기간(일)']);
+      let harvest_date = normalizeExcelDate(r['수확예정일']);
+
+      if(expected_days == null && name && cropProfiles[name] != null){ expected_days = cropProfiles[name]; }
+      if(!harvest_date && sowing_date && expected_days != null){ harvest_date = addDays(sowing_date, expected_days); }
+
+      const payload = {
+        room_id: room.id, structure_no, floor, name, line_no, cross_combo, generation, purpose, quantity,
+        trays, container_type: trays[0]?.type || null, container_count: trays[0]?.count ?? null,
+        sowing_date, expected_days, harvest_date, updated_at: new Date().toISOString()
+      };
+
+      const existing = materials.find(m =>
+        m.room_id===room.id && m.structure_no===structure_no && m.floor===floor &&
+        (line_no ? m.line_no===line_no : m.name===name)
+      );
+
+      if(existing){
+        const { error } = await sb.from('materials').update(payload).eq('id', existing.id);
+        if(error) errors.push(`${rowNum}행: ${error.message}`); else updated++;
+      } else {
+        const { error } = await sb.from('materials').insert(payload);
+        if(error) errors.push(`${rowNum}행: ${error.message}`); else inserted++;
+      }
+      if(expected_days!=null && name){
+        await sb.from('crop_profiles').upsert({ name, typical_days: expected_days, updated_at: new Date().toISOString() });
+      }
+    }
+
+    await loadAll();
+    let msg = `엑셀 처리 완료!\n\n수정 ${updated}건 · 추가 ${inserted}건`;
+    if(errors.length){
+      msg += `\n\n⚠️ 처리 못한 행 ${errors.length}건:\n` + errors.slice(0,15).join('\n');
+      if(errors.length>15) msg += `\n... 외 ${errors.length-15}건`;
+    }
+    alert(msg);
+  } catch(err){
+    console.error(err);
+    alert('엑셀 처리 중 오류가 발생했어요!\n\n' + err.message);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+    e.target.value = '';
+  }
+}
+
+let batchLocModalRoomId = null;
+
+function openBatchLocationModal(roomId, prefill, defaultChecked){
+  batchLocModalRoomId = roomId;
+  const room = rooms.find(r=>r.id===roomId);
+  if(!room) return;
+  const cfg = DEFAULT_ROOM_CONFIG[room.name];
+  const bedCount = cfg ? cfg.bed_count : (room.structure_count||0);
+  const bedFloors = cfg ? cfg.bed_floors : (room.bed_floors||2);
+
+  document.getElementById('batchLocModalTitle').textContent = prefill ? '이 정보를 다른 위치에 복사' : '여러 위치에 한번에 등록';
+  const defaultCropName = prefill?.name || (!prefill ? room.primary_crop : null);
+
+  document.getElementById('batchLocFields').innerHTML = `
+    <select id="locName">
+      <option value="">작물 선택</option>
+      ${CROP_OPTIONS.map(c=>`<option value="${c}" ${defaultCropName===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <input id="locLineNo" placeholder="계통번호" value="${escapeHtml(prefill?.line_no||'')}" />
+    <div class="row2" style="margin-bottom:11px;">
+      <input id="locCross" placeholder="교배조합" value="${escapeHtml(prefill?.cross_combo||'')}" style="margin-bottom:0;" />
+      <input id="locGen" placeholder="세대" value="${escapeHtml(prefill?.generation||'')}" style="margin-bottom:0;" />
+    </div>
+    <input id="locPurpose" placeholder="교배목적" value="${escapeHtml(prefill?.purpose||'')}" />
+    <input id="locQty" type="number" placeholder="개체수" value="${prefill?.quantity ?? ''}" />
+    <div class="row2" style="margin-bottom:11px;">
+      <select id="locTrayType" style="margin-bottom:0;">
+        <option value="">용기 종류</option>
+        ${TRAY_OPTIONS.map(o=>`<option value="${o}" ${prefill?.trays?.[0]?.type===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <input id="locTrayCount" type="number" placeholder="개수" value="${prefill?.trays?.[0]?.count ?? ''}" style="margin-bottom:0;" />
+    </div>
+    <div class="row2" style="margin-bottom:11px;">
+      <input id="locSowing" type="date" value="${prefill?.sowing_date||''}" style="margin-bottom:0;" />
+      <input id="locDays" type="number" placeholder="다음 세대까지 예상기간(일)" value="${prefill?.expected_days ?? ''}" style="margin-bottom:0;" />
+    </div>
+  `;
+
+  let boxHtml = '';
+  for(let i=1;i<=bedCount;i++){
+    const floors = bedFloors===2 ? ['1층','2층'] : ['1층'];
+    floors.forEach(fl=>{
+      const checked = defaultChecked && defaultChecked.bedNo===i && defaultChecked.floor===fl;
+      const label = bedFloors===2 ? `베드 ${i} - ${fl}` : `베드 ${i}`;
+      boxHtml += `<label style="display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 0; font-size:12.5px; white-space:nowrap;">${label} <input type="checkbox" value="${i}|${fl}" ${checked?'checked':''} /></label>`;
+    });
+  }
+  document.getElementById('batchLocCheckboxes').innerHTML = boxHtml || '<div style="font-size:12px; color:var(--ink-faint);">이 방엔 베드가 없어요</div>';
+
+  document.getElementById('batchLocModalOverlay').classList.add('open');
+}
+
+function closeBatchLocModal(){
+  document.getElementById('batchLocModalOverlay').classList.remove('open');
+}
+
+function openCopyModal(batchId){
+  const b = materials.find(m=>m.id===batchId);
+  if(!b) return;
+  openBatchLocationModal(b.room_id, b, null);
+}
+
+async function submitBatchLocModal(){
+  const checked = [...document.querySelectorAll('#batchLocCheckboxes input:checked')].map(cb=>cb.value.split('|'));
+  if(!checked.length){ alert('최소 하나의 위치를 선택해주세요.'); return; }
+
+  const name = document.getElementById('locName').value || null;
+  if(!name){ alert('작물을 선택해주세요.'); return; }
+  const line_no = document.getElementById('locLineNo').value || null;
+  const cross_combo = document.getElementById('locCross').value || null;
+  const generation = document.getElementById('locGen').value || null;
+  const purpose = document.getElementById('locPurpose').value || null;
+  const qEl = document.getElementById('locQty').value;
+  const quantity = qEl === '' ? null : Number(qEl);
+  const trayType = document.getElementById('locTrayType').value;
+  const tcEl = document.getElementById('locTrayCount').value;
+  const trayCount = tcEl === '' ? null : Number(tcEl);
+  const trays = trayType ? [{ type: trayType, count: trayCount }] : [];
+  const sowing_date = document.getElementById('locSowing').value || null;
+  let expected_days = document.getElementById('locDays').value === '' ? null : parseInt(document.getElementById('locDays').value);
+  let harvest_date = null;
+  if(expected_days == null && name && cropProfiles[name] != null){ expected_days = cropProfiles[name]; }
+  if(sowing_date && expected_days != null){ harvest_date = addDays(sowing_date, expected_days); }
+
+  const rowsToInsert = checked.map(([bedNo, floor]) => ({
+    room_id: batchLocModalRoomId, structure_no: parseInt(bedNo), floor,
+    name, line_no, cross_combo, generation, purpose, quantity, trays,
+    container_type: trays[0]?.type || null, container_count: trays[0]?.count ?? null,
+    sowing_date, expected_days, harvest_date, updated_at: new Date().toISOString()
+  }));
+
+  const { error } = await sb.from('materials').insert(rowsToInsert);
+  if(error){ alert('일괄 등록 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  if(expected_days != null && name){
+    await sb.from('crop_profiles').upsert({ name, typical_days: expected_days, updated_at: new Date().toISOString() });
+  }
+  closeBatchLocModal();
+  showToast(`${rowsToInsert.length}개 위치에 등록됐어요`);
+  await loadAll();
+}
+
+function switchView(mode){
+  viewMode = mode;
+  document.getElementById('spaceViewWrap').style.display = mode==='space' ? '' : 'none';
+  document.getElementById('workViewWrap').style.display = mode==='work' ? '' : 'none';
+  document.getElementById('viewSpaceBtn').className = 'btn ' + (mode==='space' ? 'primary' : 'inactive');
+  document.getElementById('viewWorkBtn').className = 'btn ' + (mode==='work' ? 'primary' : 'inactive');
+  if(mode==='work') renderWorkView();
+}
+
+function jumpToLocation(roomId, bedNo, floor){
+  switchView('space');
+  activeRoomId = roomId;
+  selectedBedNo = bedNo;
+  selectedFloor = floor;
+  renderFacility();
+  renderDetail();
+  document.getElementById('searchResults').classList.remove('open');
+  document.getElementById('searchInput').value = '';
+  setTimeout(()=>{ document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'start'}); }, 50);
+}
+
+function handleSearchInput(q){
+  const box = document.getElementById('searchResults');
+  q = q.trim().toLowerCase();
+  if(!q){ box.classList.remove('open'); box.innerHTML=''; return; }
+  const matches = materials.filter(m=>
+    (m.name && m.name.toLowerCase().includes(q)) ||
+    (m.line_no && m.line_no.toLowerCase().includes(q)) ||
+    (m.cross_combo && m.cross_combo.toLowerCase().includes(q))
+  ).slice(0, 10);
+
+  if(!matches.length){
+    box.innerHTML = `<div class="search-empty">검색 결과가 없어요</div>`;
+    box.classList.add('open');
+    return;
+  }
+  box.innerHTML = matches.map(m=>{
+    const room = rooms.find(r=>r.id===m.room_id);
+    const color = cropColor(m.name);
+    return `
+      <div class="search-result-item" onclick="jumpToLocation('${m.room_id}', ${m.structure_no}, '${m.floor}')">
+        <span class="search-result-name"><span class="crop-dot" style="background:${color};"></span>${escapeHtml(m.line_no || m.name || '(계통번호 없음)')}</span>
+        <span class="search-result-loc">${room ? escapeHtml(room.name) : '?'} · 베드${m.structure_no ?? '?'} · ${escapeHtml(m.floor||'')}</span>
+      </div>
+    `;
+  }).join('');
+  box.classList.add('open');
+}
+
+document.addEventListener('click', (e)=>{
+  const box = document.getElementById('searchResults');
+  const input = document.getElementById('searchInput');
+  if(!box || !input) return;
+  if(!box.contains(e.target) && e.target !== input) box.classList.remove('open');
+});
+
+function renderSummaryBadges(){
+  const wrap = document.getElementById('summaryBadgesWrap');
+  let overdue = 0, soon = 0, total = 0;
+  materials.forEach(m=>{
+    if(!m.harvest_date) return;
+    total++;
+    const st = workRowStatus(m.harvest_date);
+    if(st.cls==='overdue') overdue++;
+    else if(st.cls==='soon') soon++;
+  });
+  if(total===0){ wrap.innerHTML=''; return; }
+  wrap.innerHTML = `
+    <div class="summary-badges">
+      ${overdue>0 ? `<div class="summary-badge overdue" onclick="jumpToWorkFiltered('overdue')"><span class="num">${overdue}</span> 지연된 계통</div>` : ''}
+      ${soon>0 ? `<div class="summary-badge soon" onclick="jumpToWorkFiltered('soon')"><span class="num">${soon}</span> 이번주 수확 예정</div>` : ''}
+      ${overdue===0 && soon===0 ? `<div class="summary-badge allgood">✅ 지연·임박 항목 없음</div>` : ''}
+    </div>
+  `;
+}
+
+function jumpToWorkFiltered(status){
+  workFilterStatus = status;
+  switchView('work');
+}
+
+function workRowStatus(harvestDate){
+  if(!harvestDate) return { cls:'none', label:'-' };
+  const diff = Math.round((new Date(harvestDate+'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+  if(diff < 0) return { cls:'overdue', label:`${Math.abs(diff)}일 지남` };
+  if(diff <= 7) return { cls:'soon', label:`D-${diff}` };
+  return { cls:'ok', label:`D-${diff}` };
+}
+
+function setWorkFilter(type, value){
+  if(type==='room') workFilterRoom = value;
+  if(type==='crop') workFilterCrop = value;
+  if(type==='status') workFilterStatus = value;
+  renderWorkView();
+}
+
+function clearWorkFilters(){
+  workFilterRoom = ''; workFilterCrop = ''; workFilterStatus = '';
+  renderWorkView();
+}
+
+function renderFilterBar(){
+  const bar = document.getElementById('workFilterBar');
+  const roomOptions = rooms.filter(r=> materials.some(m=>m.room_id===r.id))
+    .map(r=>`<option value="${r.id}" ${workFilterRoom===r.id?'selected':''}>${escapeHtml(r.name)}</option>`).join('');
+  const cropOptions = CROP_OPTIONS.map(c=>`<option value="${c}" ${workFilterCrop===c?'selected':''}>${c}</option>`).join('');
+  bar.innerHTML = `
+    <select onchange="setWorkFilter('room', this.value)">
+      <option value="">전체 방</option>
+      ${roomOptions}
+    </select>
+    <select onchange="setWorkFilter('crop', this.value)">
+      <option value="">전체 작물</option>
+      ${cropOptions}
+    </select>
+    <select onchange="setWorkFilter('status', this.value)">
+      <option value="" ${workFilterStatus===''?'selected':''}>전체 상태</option>
+      <option value="overdue" ${workFilterStatus==='overdue'?'selected':''}>⚠️ 지연</option>
+      <option value="soon" ${workFilterStatus==='soon'?'selected':''}>🔶 임박(7일 이내)</option>
+      <option value="ok" ${workFilterStatus==='ok'?'selected':''}>정상</option>
+    </select>
+    ${(workFilterRoom||workFilterCrop||workFilterStatus) ? `<button class="btn small" onclick="clearWorkFilters()">필터 초기화</button>` : ''}
+  `;
+}
+
+function roomHasAlert(roomId){
+  return materials.some(m=> m.room_id===roomId && ['overdue','soon'].includes(workRowStatus(m.harvest_date).cls));
+}
+
+function renderWorkMiniMap(){
+  const wrap = document.getElementById('workMiniMap');
+  const tile = (name)=>{
+    const room = rooms.find(r=>r.name===name);
+    const muted = MUTED_ROOMS.has(name);
+    const alert = room && !muted && roomHasAlert(room.id);
+    const active = room && workFilterRoom===room.id;
+    const onclick = (room && !muted) ? `onclick="filterWorkByRoom('${room.id}')"` : '';
+    return `<div class="mini-tile ${muted?'muted':''} ${alert?'alert':''} ${active?'active':''}" ${onclick}>
+      ${alert?'<span class="mini-tile-alert">❗</span>':''}
+      ${escapeHtml(ROOM_DISPLAY_LABELS[name] || name)}
+    </div>`;
+  };
+  const row1 = ROW1.map(tile).join('') + tile(ROW1_INFO);
+  const row2 = ROW2.map(tile).join('');
+  wrap.innerHTML = `
+    <div class="mini-map-box">
+      <div class="mini-map-title">🗺️ 배치도 (❗ 클릭시 필터)</div>
+      <div class="mini-map-row">${row1}</div>
+      <div class="mini-map-corridor"></div>
+      <div class="mini-map-row">${row2}</div>
+    </div>
+  `;
+}
+
+function filterWorkByRoom(roomId){
+  workFilterRoom = (workFilterRoom === roomId) ? '' : roomId;
+  renderWorkView();
+}
+
+function renderWorkView(){
+  renderFilterBar();
+  renderWorkMiniMap();
+  const wrap = document.getElementById('workTableWrap');
+  let rows = materials.filter(m=> m.name || m.line_no);
+
+  if(workFilterRoom) rows = rows.filter(m=> m.room_id===workFilterRoom);
+  if(workFilterCrop) rows = rows.filter(m=> m.name===workFilterCrop);
+  if(workFilterStatus) rows = rows.filter(m=> workRowStatus(m.harvest_date).cls === workFilterStatus);
+
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-materials">조건에 맞는 계통이 없어요.</div>`;
+    return;
+  }
+
+  // 방별로 묶기
+  const groups = {};
+  rows.forEach(m=>{
+    if(!groups[m.room_id]) groups[m.room_id] = [];
+    groups[m.room_id].push(m);
+  });
+
+  const statusRank = { overdue:0, soon:1, ok:2, none:3 };
+
+  const groupList = Object.keys(groups).map(roomId=>{
+    const room = rooms.find(r=>r.id===roomId);
+    const items = groups[roomId].sort((a,b)=>{
+      const ra = statusRank[workRowStatus(a.harvest_date).cls];
+      const rb = statusRank[workRowStatus(b.harvest_date).cls];
+      if(ra !== rb) return ra - rb;
+      if(!a.harvest_date && !b.harvest_date) return 0;
+      if(!a.harvest_date) return 1;
+      if(!b.harvest_date) return -1;
+      return a.harvest_date.localeCompare(b.harvest_date);
+    });
+    const worstRank = Math.min(...items.map(m=> statusRank[workRowStatus(m.harvest_date).cls]));
+    return { roomId, room, items, worstRank };
+  }).sort((a,b)=> a.worstRank - b.worstRank);
+
+  wrap.innerHTML = groupList.map(g=>{
+    const needsAttention = g.worstRank <= 1; // overdue or soon
+    return `
+      <div class="work-group">
+        <div class="work-group-header">
+          <span class="wg-name">${needsAttention ? '<span class="wg-alert">❗</span>' : ''}${g.room ? escapeHtml(g.room.name) : '(알 수 없는 방)'}</span>
+          <span class="wg-count">${g.items.length}건</span>
+        </div>
+        <div class="work-group-rows">
+          ${g.items.map(m=>{
+            const st = workRowStatus(m.harvest_date);
+            const color = cropColor(m.name);
+            return `
+              <div class="wg-row" onclick="jumpToLocation('${m.room_id}', ${m.structure_no}, '${m.floor}')">
+                <span class="wg-row-crop"><span class="crop-dot" style="background:${color};"></span>${escapeHtml(m.line_no || m.name || '-')}</span>
+                <span class="wg-row-loc">베드${m.structure_no ?? '-'} · ${escapeHtml(m.floor||'-')}</span>
+                <span class="wg-row-date">${m.harvest_date || '-'}</span>
+                <span class="status-pill ${st.cls}">${st.label}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function goHome(){
+  activeRoomId = null;
+  selectedBedNo = null;
+  selectedFloor = null;
+  renderFacility();
+  renderDetail();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function selectRoom(id){
+  activeRoomId = (activeRoomId === id) ? null : id;
+  selectedBedNo = null;
+  selectedFloor = null;
+  renderFacility();
+  renderDetail();
+  if(activeRoomId){ document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'nearest'}); }
+}
+
+function selectBedFloor(bedNo, floor){
+  if(selectedBedNo === bedNo && selectedFloor === floor){
+    selectedBedNo = null; selectedFloor = null;
+  } else {
+    selectedBedNo = bedNo; selectedFloor = floor;
+  }
+  calendarViewMonth = new Date();
+  selectedNoteDate = new Date().toISOString().slice(0,10);
+  renderDetail();
+}
+
+async function quickCreateRoom(name){
+  const cfg = DEFAULT_ROOM_CONFIG[name] || { bed_count:0, bed_floors:2, tray_capacity:null };
+  const { data, error } = await sb.from('rooms').insert({
+    name, structure_count: cfg.bed_count, bed_floors: cfg.bed_floors, tray_capacity: cfg.tray_capacity
+  }).select().single();
+  if(error){ alert('방 생성 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  activeRoomId = data.id;
+  showToast(`"${name}" 방이 만들어졌어요`);
+  await loadAll();
+}
+
+function renderDetail(){
+  const wrap = document.getElementById('detail');
+  const room = rooms.find(r=>r.id===activeRoomId);
+  if(!room){ wrap.classList.remove('open'); wrap.innerHTML=''; return; }
+  wrap.classList.add('open');
+  const roomMaterials = materials.filter(m=>m.room_id===room.id);
+
+  const fixedCfg = DEFAULT_ROOM_CONFIG[room.name];
+  const bedCount = fixedCfg ? fixedCfg.bed_count : (room.structure_count || 0);
+  const bedFloors = fixedCfg ? fixedCfg.bed_floors : (room.bed_floors || 2);
+  const trayCap = fixedCfg ? fixedCfg.tray_capacity : room.tray_capacity;
+
+  let bodyHtml;
+  if(bedCount > 0){
+    const colsPerRow = ROOM_COLS_PER_ROW[room.name] || bedCount;
+    const cropNames = [...new Set(roomMaterials.map(m=>m.name).filter(Boolean))];
+    const matchesPrimary = room.primary_crop && (cropNames.length===0 || (cropNames.length===1 && cropNames[0]===room.primary_crop));
+    const legendHtml = (cropNames.length && !matchesPrimary) ? `
+      <div class="crop-legend">
+        ${cropNames.map(n=>`<span class="legend-chip"><span class="legend-dot" style="background:${cropColor(n)};"></span>${escapeHtml(n)}</span>`).join('')}
+      </div>
+    ` : '';
+    const ratio = ROOM_WORKSPACE_RATIO[room.name] || { master:1.5, panel:1 };
+    bodyHtml = legendHtml + `
+      <div class="bed-workspace">
+        <div class="bed-master" style="flex:${ratio.master};">
+          ${bedFloors===2
+            ? bedGroupedHtml(room, roomMaterials, bedCount, colsPerRow)
+            : bedRowHtml(room, roomMaterials, bedCount, colsPerRow)
+          }
+        </div>
+        <div class="bed-side-panel" style="flex:${ratio.panel};">${bedDetailPanelHtml(room, roomMaterials, bedFloors)}</div>
+      </div>
+    `;
+  } else {
+    bodyHtml = `
+      ${roomMaterials.length ? `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:26%">재료명</th>
+            <th style="width:22%">수량</th>
+            <th style="width:18%">보관 위치</th>
+            <th style="width:14%">유통기한</th>
+            <th style="width:12%">담당자</th>
+            ${isAdmin ? '<th style="width:8%"></th>' : ''}
+          </tr>
+        </thead>
+        <tbody>${roomMaterials.map(m=>materialRow(m)).join('')}</tbody>
+      </table>` : `<div class="empty-materials">등록된 재료가 없어요.${isAdmin?' 아래 버튼으로 추가해보세요.':''}</div>`}
+      ${isAdmin ? `<button class="add-row-btn" onclick="addMaterial('${room.id}')">+ 재료 추가</button>` : ''}
+    `;
+  }
+
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="detail-head">
+        <div>
+          <h3>${escapeHtml(room.name)}</h3>
+          <div class="detail-meta">
+            ${room.location? `<span>📍 ${escapeHtml(room.location)}</span>`:''}
+            ${room.manager? `<span>담당자 ${escapeHtml(room.manager)}</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          ${isAdmin ? `<button class="btn danger-text" onclick="deleteRoom('${room.id}')">방 삭제</button>` : ''}
+          <button class="btn close-x" onclick="selectRoom('${room.id}')">✕</button>
+        </div>
+      </div>
+      ${envSettingsHtml(room)}
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function lightDurationLabel(start, end){
+  if(!start || !end) return '';
+  const toMin = (t)=>{ const [h,m] = t.split(':').map(Number); return h*60+m; };
+  let diff = toMin(end) - toMin(start);
+  if(diff < 0) diff += 24*60;
+  const h = Math.floor(diff/60), m = diff%60;
+  return `${h}시간${m ? m+'분':''}`;
+}
+
+function envSettingsHtml(room){
+  const t = room.temperature, ls = room.light_start, le = room.light_end;
+  if(!isAdmin){
+    if(t==null && !ls) return '';
+    return `<div class="env-info">
+      <span>🌡️ ${t!=null ? t+'°C' : '미설정'}</span>
+      <span>💡 ${ls&&le ? `${ls.slice(0,5)} ~ ${le.slice(0,5)} (${lightDurationLabel(ls,le)})` : '미설정'}</span>
+    </div>`;
+  }
+  return `
+    <div class="env-config" data-room-id="${room.id}">
+      <label>🌡️ 온도(°C)<input type="number" step="0.1" data-env-field="temperature" value="${t ?? ''}" style="width:80px;" /></label>
+      <label>💡 점등시간${hourSelectHtml('light_start', ls)}</label>
+      <label>소등시간${hourSelectHtml('light_end', le)}</label>
+      <button class="btn small primary" onclick="saveEnvSettings('${room.id}', this)">저장</button>
+    </div>
+    <div class="env-config" data-room-id="${room.id}" style="margin-top:8px;">
+      <label>🌾 대표 작물 <span style="font-weight:500; color:var(--ink-faint);">(이 방에서 주로 키우는 작물 · 평소엔 색으로만 표시돼요)</span>
+        <select id="primaryCropSel" style="margin-top:4px;">
+          <option value="">지정 안 함</option>
+          ${CROP_OPTIONS.map(c=>`<option value="${c}" ${room.primary_crop===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </label>
+      <button class="btn small primary" onclick="savePrimaryCrop('${room.id}')">저장</button>
+    </div>
+  `;
+}
+
+async function savePrimaryCrop(roomId){
+  const val = document.getElementById('primaryCropSel').value || null;
+  const { error } = await sb.from('rooms').update({ primary_crop: val, updated_at: new Date().toISOString() }).eq('id', roomId);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  showToast('대표 작물 저장됐어요');
+  await loadAll();
+}
+
+function hourSelectHtml(field, currentTime){
+  const currentHour = currentTime ? currentTime.slice(0,2) : '';
+  let opts = '<option value="">-</option>';
+  for(let h=0; h<=24; h++){
+    const hh = String(h).padStart(2,'0');
+    opts += `<option value="${hh}:00" ${currentHour===hh?'selected':''}>${hh}시</option>`;
+  }
+  return `<select data-env-field="${field}">${opts}</select>`;
+}
+
+async function saveEnvSettings(roomId, btnEl){
+  const wrap = btnEl.closest('.env-config');
+  const get = (f)=> wrap.querySelector(`[data-env-field="${f}"]`).value;
+  const payload = {
+    temperature: get('temperature')===''? null : Number(get('temperature')),
+    light_start: get('light_start') || null,
+    light_end: get('light_end') || null,
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('rooms').update(payload).eq('id', roomId);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  showToast('저장됐어요');
+  await loadAll();
+}
+
+function cropChipsHtml(batches){
+  if(!batches.length) return `<div class="empty-chip">비어있음</div>`;
+  return `<div class="mini-chip-list">${batches.map(b=>{
+    const subText = `${b.cross_combo ? escapeHtml(b.cross_combo) : '-'} · ${b.generation ? escapeHtml(b.generation) : '-'}`;
+    return `
+    <div class="mini-chip">
+      <span class="crop-dot" style="background:${cropColor(b.name)};"></span>
+      <div class="mini-chip-text">
+        <div class="mc-line" title="${escapeHtml(b.line_no||'')}">${b.line_no ? escapeHtml(b.line_no) : '-'}</div>
+        <div class="mc-sub" title="${escapeHtml((b.cross_combo||'-') + ' · ' + (b.generation||'-'))}">${subText}</div>
+      </div>
+    </div>
+  `;}).join('')}</div>`;
+}
+
+function bedColumnsHtml(room, roomMaterials, order){
+  return order.map(i=>{
+    const floor1 = roomMaterials.filter(m=> m.structure_no===i && m.floor==='1층');
+    const floor2 = roomMaterials.filter(m=> m.structure_no===i && m.floor==='2층');
+    const sel1 = selectedBedNo===i && selectedFloor==='1층';
+    const sel2 = selectedBedNo===i && selectedFloor==='2층';
+    return `
+      <div class="struct-col mini">
+        <div class="bed-col-title">베드 ${i}</div>
+        <div class="bed-floor-section clickable ${sel1?'floor-selected':''}" onclick="selectBedFloor(${i}, '1층')">
+          <div class="bed-floor-label">1층</div>
+          ${cropChipsHtml(floor1)}
+        </div>
+        <div class="bed-floor-section clickable ${sel2?'floor-selected':''}" onclick="selectBedFloor(${i}, '2층')">
+          <div class="bed-floor-label">2층</div>
+          ${cropChipsHtml(floor2)}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function bedDetailPanelHtml(room, roomMaterials, bedFloors){
+  if(!selectedBedNo || !selectedFloor){
+    return `<div class="panel-placeholder">🛏️<br>베드의 1층 또는 2층을<br>클릭하면 상세 정보가 여기 나와요</div>`;
+  }
+  const batches = roomMaterials.filter(m=> m.structure_no===selectedBedNo && m.floor===selectedFloor);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const activeDate = selectedNoteDate || todayStr;
+  const activeNote = bedNotes.find(n=> n.room_id===room.id && n.structure_no===selectedBedNo && n.floor===selectedFloor && n.note_date===activeDate);
+  const noteHtml = `
+    <div class="bed-note-box">
+      <div class="bed-note-label">📝 작업상태 메모</div>
+      ${miniCalendarHtml(room.id, selectedBedNo, selectedFloor)}
+      <div class="cal-selected-date">${activeDate}${activeDate===todayStr?' (오늘)':''}</div>
+      ${canEditNotes ? `
+        <textarea id="bedNoteInput" placeholder="이 날짜의 작업상태를 적어주세요...">${escapeHtml(activeNote?.note||'')}</textarea>
+        <button class="btn small primary" onclick="saveBedNote('${room.id}', ${selectedBedNo}, '${selectedFloor}')">메모 저장</button>
+      ` : (activeNote?.note
+          ? `<div class="bed-note-text">${escapeHtml(activeNote.note)}</div>`
+          : `<div class="empty-chip">이 날짜엔 메모가 없어요</div>`)
+      }
+    </div>
+  `;
+  return `
+    <div class="panel-title">베드 ${selectedBedNo} · ${selectedFloor}</div>
+    ${batches.map(b=>batchCardHtml(b)).join('') || `<div class="empty-chip" style="margin-bottom:10px;">등록된 작물이 없어요</div>`}
+    ${isAdmin ? `<button class="add-batch-btn prominent" onclick="openBatchLocationModal('${room.id}', null, {bedNo:${selectedBedNo}, floor:'${selectedFloor}'})">➕ 집단 추가</button>` : ''}
+    ${noteHtml}
+  `;
+}
+
+function miniCalendarHtml(roomId, bedNo, floor){
+  if(!calendarViewMonth) calendarViewMonth = new Date();
+  const year = calendarViewMonth.getFullYear();
+  const month = calendarViewMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const noteDateSet = new Set(
+    bedNotes.filter(n=> n.room_id===roomId && n.structure_no===bedNo && n.floor===floor && n.note).map(n=>n.note_date)
+  );
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  let cells = '';
+  for(let i=0;i<startWeekday;i++){ cells += `<div class="cal-cell empty"></div>`; }
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const hasNote = noteDateSet.has(dateStr);
+    const isToday = dateStr===todayStr;
+    const isSelected = dateStr===selectedNoteDate;
+    cells += `<div class="cal-cell ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectNoteDate('${dateStr}')">${d}${hasNote?'<span class="cal-dot"></span>':''}</div>`;
+  }
+
+  return `
+    <div class="mini-calendar">
+      <div class="cal-header">
+        <button type="button" onclick="shiftCalendarMonth(-1)">‹</button>
+        <span>${year}년 ${month+1}월</span>
+        <button type="button" onclick="shiftCalendarMonth(1)">›</button>
+      </div>
+      <div class="cal-weekdays">${['일','월','화','수','목','금','토'].map(w=>`<div>${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+    </div>
+  `;
+}
+
+function shiftCalendarMonth(delta){
+  calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()+delta, 1);
+  renderDetail();
+}
+
+function selectNoteDate(dateStr){
+  selectedNoteDate = dateStr;
+  renderDetail();
+}
+
+async function saveBedNote(roomId, bedNo, floor){
+  const val = document.getElementById('bedNoteInput').value;
+  const dateVal = selectedNoteDate || new Date().toISOString().slice(0,10);
+  const { error } = await sb.from('bed_notes').upsert(
+    { room_id: roomId, structure_no: bedNo, floor, note: val, note_date: dateVal, updated_at: new Date().toISOString() },
+    { onConflict: 'room_id,structure_no,floor,note_date' }
+  );
+  if(error){ alert('메모 저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  showToast('메모 저장됐어요');
+  await loadAll();
+}
+
+function innerCorridorHtml(topOrder, bottomOrder){
+  return `
+    <div class="inner-corridor">
+      <span class="entrance-label">입구</span>
+      <span class="corridor-text">통&nbsp;&nbsp;로</span>
+    </div>
+  `;
+}
+
+function bedGroupedHtml(room, roomMaterials, bedCount, colsPerRow){
+  const layout = ROOM_BED_LAYOUT[room.name];
+  let topOrder, bottomOrder;
+  if(layout){
+    topOrder = layout.top; bottomOrder = layout.bottom;
+  } else {
+    topOrder = []; bottomOrder = [];
+    for(let i=1;i<=bedCount;i++){ (i<=colsPerRow ? topOrder : bottomOrder).push(i); }
+  }
+  return `
+    <div class="struct-cols" style="grid-template-columns:repeat(${topOrder.length}, 1fr);">${bedColumnsHtml(room, roomMaterials, topOrder)}</div>
+    ${innerCorridorHtml(topOrder, bottomOrder)}
+    <div class="struct-cols" style="grid-template-columns:repeat(${bottomOrder.length}, 1fr);">${bedColumnsHtml(room, roomMaterials, bottomOrder)}</div>
+  `;
+}
+
+function bedRowHtml(room, roomMaterials, bedCount, colsPerRow){
+  let cols = '';
+  for(let i=1; i<=bedCount; i++){
+    const batches = roomMaterials.filter(m=> m.structure_no===i);
+    const sel = selectedBedNo===i && selectedFloor==='1층';
+    cols += `
+      <div class="struct-col mini">
+        <div class="bed-col-title">베드 ${i}</div>
+        <div class="bed-floor-section clickable ${sel?'floor-selected':''}" onclick="selectBedFloor(${i}, '1층')">
+          ${cropChipsHtml(batches)}
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="floor-band">
+      <div class="floor-band-label">베드 배치</div>
+      <div class="struct-cols" style="grid-template-columns:repeat(${colsPerRow}, 1fr);">${cols}</div>
+    </div>
+  `;
+}
+
+function batchCardHtml(b){
+  const color = cropColor(b.name);
+  const pct = growthProgress(b.sowing_date, b.harvest_date);
+  const progressHtml = pct!=null ? `
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" style="width:${pct.toFixed(0)}%; background:${pct>=100?'var(--danger)':'var(--teal)'};"></div></div>
+      <div class="progress-label">${daysLeftLabel(b.harvest_date)}</div>
+    </div>
+  ` : '';
+  const histBadge = historySummary(b.id) ? `<div onclick="openHistoryModal('${b.id}')" style="cursor:pointer; font-size:11px; font-weight:700; color:var(--amber); background:#FBEEDD; border-radius:8px; padding:6px 10px;">🕓 세대 이력: ${historySummary(b.id)}</div>` : '';
+
+  if(!isAdmin){
+    const trayLine = (b.trays && b.trays.length)
+      ? b.trays.map(t=> `${t.type||''} ${t.count?t.count+'개':''}`.trim()).filter(Boolean).join(', ')
+      : (b.container_type ? `${b.container_type}${b.container_count?' '+b.container_count+'개':''}` : '');
+    return `
+      <div class="batch-card" style="gap:7px; border-left:4px solid ${color};">
+        <div style="font-weight:800; font-size:15px; display:flex; align-items:center; gap:6px;">
+          <span class="crop-dot" style="background:${color}; width:9px; height:9px;"></span>${escapeHtml(b.line_no || b.name || '(계통번호 없음)')}
+        </div>
+        ${b.quantity!=null ? `<div style="font-size:13px; color:var(--ink-soft);">개체수 ${escapeHtml(String(b.quantity))}</div>` : ''}
+        <button type="button" class="card-more-btn" id="moreBtn-${b.id}" onclick="toggleCardExtra('${b.id}')">더보기 ▾</button>
+        <div class="card-extra" id="extra-${b.id}" style="display:none;">
+          <div style="font-size:13px; color:var(--ink-soft); display:flex; gap:12px; flex-wrap:wrap;">
+            <span>교배조합: ${b.cross_combo ? escapeHtml(b.cross_combo) : '-'}</span>
+            <span>세대: ${b.generation ? escapeHtml(b.generation) : '-'}</span>
+          </div>
+          ${b.purpose ? `<div style="font-size:13px; color:var(--ink-soft);">목적: ${escapeHtml(b.purpose)}</div>` : ''}
+          ${trayLine ? `<div style="font-size:13px; color:var(--ink-soft);">${escapeHtml(trayLine)}</div>` : ''}
+          ${b.sowing_date ? `<div style="font-size:12.5px; color:var(--ink-faint);">파종 ${b.sowing_date}${b.harvest_date? ` → 수확예정 ${b.harvest_date}`:''}</div>` : ''}
+          ${histBadge}
+          ${progressHtml}
+        </div>
+      </div>
+    `;
+  }
+  const trayList = (b.trays && b.trays.length) ? b.trays : (b.container_type ? [{type:b.container_type, count:b.container_count}] : []);
+  return `
+    <div class="batch-card" style="border-left:4px solid ${color};" data-batch-id="${b.id}">
+      <select data-field="name">
+        <option value="">작물 선택</option>
+        ${CROP_OPTIONS.map(c=>`<option value="${c}" ${b.name===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <input data-field="line_no" placeholder="계통번호" value="${escapeHtml(b.line_no||'')}" />
+      <input data-field="quantity" type="number" placeholder="개체수" value="${b.quantity ?? ''}" />
+
+      <button type="button" class="card-more-btn" id="moreBtn-${b.id}" onclick="toggleCardExtra('${b.id}')">더보기 ▾</button>
+      <div class="card-extra" id="extra-${b.id}" style="display:none;">
+        <div class="row2">
+          <input data-field="cross_combo" placeholder="교배조합 (예: 1/2)" value="${escapeHtml(b.cross_combo||'')}" />
+          <input data-field="generation" placeholder="세대 (예: F3)" value="${escapeHtml(b.generation||'')}" />
+        </div>
+        <input data-field="purpose" placeholder="교배목적 (예: 내병성 검정용)" value="${escapeHtml(b.purpose||'')}" />
+        <div class="tray-list" id="trays-${b.id}">
+          ${trayList.map(t=>trayRowHtml(t)).join('')}
+        </div>
+        <button type="button" class="add-batch-btn" onclick="addTrayRow('${b.id}')">+ 트레이 추가</button>
+        <div class="row2">
+          <label>파종일
+            <input data-field="sowing_date" type="date" value="${b.sowing_date||''}" />
+          </label>
+          <label>다음 세대까지 예상기간(일)
+            <input data-field="expected_days" type="number" placeholder="예: 45" value="${b.expected_days ?? ''}" />
+          </label>
+        </div>
+        <label>수확예정일
+          <input data-field="harvest_date" type="date" value="${b.harvest_date||''}" />
+        </label>
+        ${progressHtml}
+        ${histBadge}
+        ${b.generation ? `<button class="add-batch-btn" onclick="completeGeneration('${b.id}')" style="margin-top:8px; color:var(--amber); border-color:var(--amber);">✅ 이 세대 완료 → 다음 세대로</button>` : ''}
+      </div>
+
+      <div class="batch-actions">
+        <button class="batch-save-btn" onclick="saveBatchCard('${b.id}', this)">💾 저장</button>
+        <button class="batch-del-btn" onclick="openCopyModal('${b.id}')" style="color:var(--teal-deep);">📋 복사</button>
+        <button class="batch-del-btn" onclick="deleteMaterial('${b.id}')">삭제</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleCardExtra(id){
+  const el = document.getElementById('extra-'+id);
+  const btn = document.getElementById('moreBtn-'+id);
+  if(!el) return;
+  const willOpen = el.style.display === 'none';
+  el.style.display = willOpen ? 'block' : 'none';
+  if(btn) btn.textContent = willOpen ? '접기 ▴' : '더보기 ▾';
+}
+
+const TRAY_OPTIONS = ['32구 트레이','40구 트레이','50구 트레이','72구 트레이','105구 트레이','128구 트레이','200구 트레이','20구 이색포트'];
+
+function trayRowHtml(t){
+  t = t || {};
+  return `
+    <div class="tray-row row2">
+      <select class="tray-type">
+        <option value="">용기 종류</option>
+        ${TRAY_OPTIONS.map(o=>`<option value="${o}" ${t.type===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <input class="tray-count" type="number" placeholder="개수" value="${t.count ?? ''}" />
+      <button type="button" class="tray-remove-btn" onclick="this.closest('.tray-row').remove()">✕</button>
+    </div>
+  `;
+}
+
+function addTrayRow(batchId){
+  const list = document.getElementById(`trays-${batchId}`);
+  if(list) list.insertAdjacentHTML('beforeend', trayRowHtml({}));
+}
+
+async function addBatch(roomId, bedNo, floor){
+  const { error } = await sb.from('materials').insert({
+    room_id: roomId, structure_no: bedNo, floor: floor, quantity: 0
+  });
+  if(error){ console.error(error); alert('추가 실패!\n\n' + (error.message||JSON.stringify(error))); }
+  else await loadAll();
+}
+
+async function updateBedCount(roomId, value){
+  const n = Math.max(0, parseInt(value)||0);
+  const { error } = await sb.from('rooms').update({ structure_count: n }).eq('id', roomId);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  await loadAll();
+}
+async function updateBedFloors(roomId, value){
+  const n = value === '1' ? 1 : 2;
+  const { error } = await sb.from('rooms').update({ bed_floors: n }).eq('id', roomId);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  await loadAll();
+}
+async function updateTrayCapacity(roomId, value){
+  const n = value === '' ? null : Math.max(0, parseInt(value)||0);
+  const { error } = await sb.from('rooms').update({ tray_capacity: n }).eq('id', roomId);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  await loadAll();
+}
+
+function materialRow(m){
+  let expClass = '';
+  if(m.expiry_date){
+    const days = (new Date(m.expiry_date) - new Date()) / 86400000;
+    if(days < 0) expClass = 'expiry-over';
+    else if(days < 14) expClass = 'expiry-warn';
+  }
+  if(!isAdmin){
+    return `
+      <tr>
+        <td>${escapeHtml(m.name||'')}</td>
+        <td>${m.quantity ?? ''} ${escapeHtml(m.unit||'')}</td>
+        <td>${escapeHtml(m.location_detail||'')}</td>
+        <td class="${expClass}">${m.expiry_date||''}</td>
+        <td>${escapeHtml(m.manager||'')}</td>
+      </tr>
+    `;
+  }
+  return `
+    <tr data-mat-id="${m.id}">
+      <td><input class="editable" data-field="name" value="${escapeHtml(m.name||'')}" /></td>
+      <td>
+        <div class="qty-cell">
+          <button class="step-btn" onclick="stepQty('${m.id}', -1)">−</button>
+          <input class="editable" data-field="quantity" type="number" value="${m.quantity ?? ''}" />
+          <button class="step-btn" onclick="stepQty('${m.id}', 1)">+</button>
+          <input class="editable" data-field="unit" style="width:48px" placeholder="단위" value="${escapeHtml(m.unit||'')}" />
+        </div>
+      </td>
+      <td><input class="editable" data-field="location_detail" value="${escapeHtml(m.location_detail||'')}" /></td>
+      <td><input class="editable ${expClass}" data-field="expiry_date" type="date" value="${m.expiry_date||''}" /></td>
+      <td><input class="editable" data-field="manager" value="${escapeHtml(m.manager||'')}" /></td>
+      <td style="white-space:nowrap;">
+        <button class="btn small primary" onclick="saveMaterialRow('${m.id}', this)">저장</button>
+        <button class="btn danger-text small" onclick="deleteMaterial('${m.id}')">삭제</button>
+      </td>
+    </tr>
+  `;
+}
+
+async function saveMaterialRow(id, btnEl){
+  const row = btnEl.closest('tr');
+  const get = (f)=> row.querySelector(`[data-field="${f}"]`).value;
+  const payload = {
+    name: get('name').trim(),
+    quantity: get('quantity')===''? null : get('quantity'),
+    unit: get('unit') || null,
+    location_detail: get('location_detail') || null,
+    expiry_date: get('expiry_date') || null,
+    manager: get('manager') || null,
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){ alert('저장 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  showToast('저장됐어요');
+  await loadAll();
+}
+
+async function saveBatchCard(id, btnEl){
+  const card = btnEl.closest('.batch-card');
+  const get = (f)=> card.querySelector(`[data-field="${f}"]`).value;
+
+  const name = get('name').trim();
+  const line_no = get('line_no') || null;
+  const cross_combo = get('cross_combo') || null;
+  const generation = get('generation') || null;
+  const purpose = get('purpose') || null;
+  const quantity = get('quantity')===''? null : get('quantity');
+  const sowing_date = get('sowing_date') || null;
+  let expected_days = get('expected_days')===''? null : parseInt(get('expected_days'));
+  let harvest_date = get('harvest_date') || null;
+
+  const trays = [...card.querySelectorAll('.tray-row')].map(row=>({
+    type: row.querySelector('.tray-type').value || null,
+    count: row.querySelector('.tray-count').value === '' ? null : Number(row.querySelector('.tray-count').value)
+  })).filter(t => t.type || t.count!=null);
+
+  // 예상기간을 비워뒀는데 예전에 등록해둔 작물이면 자동 적용
+  if(expected_days == null && name && cropProfiles[name] != null){
+    expected_days = cropProfiles[name];
+  }
+  // 수확예정일을 직접 안 넣었으면 파종일+예상기간으로 자동 계산
+  if(!harvest_date && sowing_date && expected_days != null){
+    harvest_date = addDays(sowing_date, expected_days);
+  }
+
+  const payload = {
+    name, line_no, cross_combo, generation, purpose, quantity,
+    trays, container_type: trays[0]?.type || null, container_count: trays[0]?.count ?? null,
+    sowing_date, expected_days, harvest_date, updated_at: new Date().toISOString()
+  };
+
+  btnEl.textContent = '저장 중...';
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){
+    alert('저장 실패!\n\n' + (error.message||JSON.stringify(error)));
+    btnEl.textContent = '💾 저장';
+    return;
+  }
+  if(expected_days != null && name){
+    await sb.from('crop_profiles').upsert({ name, typical_days: expected_days, updated_at: new Date().toISOString() });
+  }
+  showToast('저장됐어요');
+  await loadAll();
+}
+function openHistoryModal(materialId){
+  const hist = generationHistory.filter(h=>h.material_id===materialId)
+    .sort((a,b)=> (b.end_date||'').localeCompare(a.end_date||''));
+  document.getElementById('historyModalList').innerHTML = hist.length ? hist.map(h=>`
+    <div style="border:2px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:3px;">교배목적: ${h.purpose ? escapeHtml(h.purpose) : '-'}</div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:3px;">교배조합: ${h.cross_combo ? escapeHtml(h.cross_combo) : '-'}</div>
+      <div style="font-size:12.5px; color:var(--ink-soft);">세대: ${h.generation ? escapeHtml(h.generation) : '-'}</div>
+      ${isAdmin ? `<button class="btn danger-text small" onclick="deleteHistoryEntry('${h.id}', '${materialId}')" style="margin-top:6px; padding:6px 10px;">취소(삭제)</button>` : ''}
+    </div>
+  `).join('') : `<div class="empty-chip">이력이 없어요</div>`;
+  document.getElementById('historyModalOverlay').classList.add('open');
+}
+
+function closeHistoryModal(){
+  document.getElementById('historyModalOverlay').classList.remove('open');
+}
+
+async function deleteHistoryEntry(historyId, materialId){
+  if(!confirm('이 세대 이력을 삭제할까요?')) return;
+  const { error } = await sb.from('generation_history').delete().eq('id', historyId);
+  if(error){ alert('삭제 실패!\n\n' + (error.message||JSON.stringify(error))); return; }
+  showToast('이력이 삭제됐어요');
+  await loadAll();
+  openHistoryModal(materialId);
+}
+
+function historySummary(materialId){
+  const hist = generationHistory.filter(h=>h.material_id===materialId)
+    .sort((a,b)=> (b.end_date||'').localeCompare(a.end_date||''));
+  if(!hist.length) return '';
+  const fmt = (d)=> d ? d.slice(5).replace('-','/') : '?';
+  return hist.map(h=> `${escapeHtml(h.generation||'-')}(${fmt(h.start_date)}~${fmt(h.end_date)})`).join(' · ');
+}
+
+async function completeGeneration(materialId){
+  const m = materials.find(x=>x.id===materialId);
+  if(!m || !m.generation){ alert('완료 처리할 세대 정보가 없어요. 먼저 세대를 입력하고 저장해주세요.'); return; }
+  if(!confirm(`"${m.generation}" 세대를 완료 처리하고 다음 세대 입력을 위해 비울까요?\n(지금까지 기록은 이력에 남아요)`)) return;
+
+  const endDate = new Date().toISOString().slice(0,10);
+  const { error: e1 } = await sb.from('generation_history').insert({
+    material_id: materialId, generation: m.generation, cross_combo: m.cross_combo, purpose: m.purpose,
+    start_date: m.sowing_date || null, end_date: endDate
+  });
+  if(e1){ alert('세대 완료 기록 실패!\n\n' + (e1.message||JSON.stringify(e1))); return; }
+
+  const { error: e2 } = await sb.from('materials').update({
+    generation: null, sowing_date: null, expected_days: null, harvest_date: null,
+    updated_at: new Date().toISOString()
+  }).eq('id', materialId);
+  if(e2){ alert('갱신 실패!\n\n' + (e2.message||JSON.stringify(e2))); return; }
+
+  showToast('세대 완료! 다음 세대를 입력해주세요');
+  await loadAll();
+}
+async function updateBatchName(id, name){
+  const m = materials.find(x=>x.id===id);
+  const payload = { name, updated_at: new Date().toISOString() };
+  const typicalDays = cropProfiles[name];
+  if(typicalDays != null && m && m.expected_days == null){
+    payload.expected_days = typicalDays;
+    if(m.sowing_date){ payload.harvest_date = addDays(m.sowing_date, typicalDays); }
+  }
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){ console.error(error); showToast('저장 실패'); }
+  else { showToast(typicalDays!=null && m && m.expected_days==null ? `저장됨 (재배기간 ${typicalDays}일 자동 적용)` : '저장됨'); await loadAll(); }
+}
+
+async function updateSowingDate(id, value){
+  const m = materials.find(x=>x.id===id);
+  const payload = { sowing_date: value || null, updated_at: new Date().toISOString() };
+  if(value && m && m.expected_days){ payload.harvest_date = addDays(value, m.expected_days); }
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){ console.error(error); showToast('저장 실패'); }
+  else { showToast('저장됨'); await loadAll(); }
+}
+
+async function updateExpectedDays(id, value){
+  const n = value === '' ? null : parseInt(value)||null;
+  const m = materials.find(x=>x.id===id);
+  const payload = { expected_days: n, updated_at: new Date().toISOString() };
+  if(n!=null && m && m.sowing_date){ payload.harvest_date = addDays(m.sowing_date, n); }
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){ console.error(error); showToast('저장 실패'); return; }
+  if(n!=null && m && m.name){
+    await sb.from('crop_profiles').upsert({ name: m.name, typical_days: n, updated_at: new Date().toISOString() });
+  }
+  showToast('저장됨 (다음에 같은 작물명 입력시 자동 적용돼요)');
+  await loadAll();
+}
+async function updateMaterial(id, field, value){
+  const payload = { [field]: value === '' ? null : value, updated_at: new Date().toISOString() };
+  const { error } = await sb.from('materials').update(payload).eq('id', id);
+  if(error){ console.error(error); showToast('저장 실패'); }
+  else { showToast('저장됨'); await loadAll(); }
+}
+async function stepQty(id, delta){
+  const m = materials.find(x=>x.id===id);
+  if(!m) return;
+  const newQty = (Number(m.quantity)||0) + delta;
+  await updateMaterial(id, 'quantity', newQty < 0 ? 0 : newQty);
+}
+async function addMaterial(roomId){
+  const { error } = await sb.from('materials').insert({ room_id: roomId, name: '새 재료', quantity: 0 });
+  if(error){ console.error(error); showToast('추가 실패'); }
+  else await loadAll();
+}
+async function deleteMaterial(id){
+  if(!confirm('이 재료를 삭제할까요?')) return;
+  const { error } = await sb.from('materials').delete().eq('id', id);
+  if(error) showToast('삭제 실패');
+  else await loadAll();
+}
+async function deleteRoom(id){
+  if(!confirm('이 방과 안의 모든 재료가 삭제됩니다. 계속할까요?')) return;
+  const { error } = await sb.from('rooms').delete().eq('id', id);
+  if(error) showToast('삭제 실패');
+  else { activeRoomId = null; await loadAll(); }
+}
+function openRoomModal(){
+  document.getElementById('roomModalOverlay').classList.add('open');
+  document.getElementById('newRoomName').value='';
+  document.getElementById('newRoomLocation').value='';
+  document.getElementById('newRoomManager').value='';
+  document.getElementById('newRoomName').focus();
+}
+function closeRoomModal(){ document.getElementById('roomModalOverlay').classList.remove('open'); }
+async function createRoom(){
+  const name = document.getElementById('newRoomName').value.trim();
+  if(!name){ showToast('방 이름을 입력해주세요'); return; }
+  const location = document.getElementById('newRoomLocation').value.trim();
+  const manager = document.getElementById('newRoomManager').value.trim();
+  const { data, error } = await sb.from('rooms').insert({ name, location, manager }).select().single();
+  if(error){
+    console.error(error);
+    alert('방 추가 실패!\n\n에러 메시지: ' + (error.message || JSON.stringify(error)) + '\n\n코드: ' + (error.code || '없음') + '\n힌트: ' + (error.hint || '없음'));
+    return;
+  }
+  closeRoomModal();
+  activeRoomId = data.id;
+  showToast('방이 추가되었어요');
+  await loadAll();
+}
+
+sb.channel('facility-changes')
+  .on('postgres_changes', { event:'*', schema:'public', table:'rooms' }, loadAll)
+  .on('postgres_changes', { event:'*', schema:'public', table:'materials' }, loadAll)
+  .subscribe((status)=>{ if(status === 'SUBSCRIBED') setStatus(true); });
+
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape') return;
+  const batchModal = document.getElementById('batchLocModalOverlay');
+  const roomModal = document.getElementById('roomModalOverlay');
+  const historyModal = document.getElementById('historyModalOverlay');
+  const searchResults = document.getElementById('searchResults');
+  if(batchModal.classList.contains('open')) closeBatchLocModal();
+  else if(roomModal.classList.contains('open')) closeRoomModal();
+  else if(historyModal.classList.contains('open')) closeHistoryModal();
+  else if(searchResults.classList.contains('open')) searchResults.classList.remove('open');
+});
+
+updateAdminUI();
+setTimeout(()=>{
+  if(document.getElementById('statusText').textContent === '연결 중...'){
+    alert('8초가 지나도 연결이 안 되고 있어요.\n\n혹시 지금 이 화면을 Claude 채팅창 안의 "미리보기"로 보고 계신가요?\n그렇다면 파일을 다운로드 받은 뒤, 실제 브라우저 탭(Chrome/Edge 등)에서 다시 열어주세요.\n채팅 안 미리보기는 보안 제한 때문에 외부 서버와 통신할 수 없어요.');
+  }
+}, 8000);
+loadAll();
+</script>
+</body>
+</html>
