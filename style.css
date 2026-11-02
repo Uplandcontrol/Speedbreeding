@@ -1186,6 +1186,15 @@
 
   #tourPop.centered{ width:420px; }
   #tourPop.centered h4{ font-size:17px; }
+
+  /* 큰 예시 그림이 들어가는 단계(TOUR_STEPS의 wide:true): 말풍선을 넓히고, 그림은 스크롤 없이 한눈에 보이게 높이에 맞춰 줄인다 */
+  #tourPop.wide, #tourPop.wide.centered{ width:700px; }
+  #tourPop.wide .tour-shot-box{ max-height:none; overflow:hidden; text-align:center; }
+  #tourPop.wide .tour-shot-box img{ display:block; width:auto; height:auto; max-width:100%; max-height:min(620px, 56vh); margin:0 auto; }
+  #tourPop.wide .tour-shot-cap{ font-size:12.5px; }
+  /* 'xl': 베드 맵 + 오른쪽 패널처럼 화면 전체가 한 장에 들어가는 그림 */
+  #tourPop.wide.xl, #tourPop.wide.xl.centered{ width:1000px; }
+  #tourPop.wide.xl .tour-shot-box img{ max-height:min(640px, 58vh); }
   .tour-skip-row{ padding:0 16px; margin-top:10px; }
   .tour-skip{
     border:none; background:transparent; color:var(--ink-faint); font-size:11.5px; font-weight:600;

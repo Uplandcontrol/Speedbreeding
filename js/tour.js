@@ -23,7 +23,9 @@
    │ advanceOnClick 사용자가 그 요소를 실제로 클릭하면 다음 단계로 넘어감 │
    │ keepModal      집단추가 입력칸을 닫지 않고 유지 (등록 설명용)        │
    │ shots          상황별 예시 스크린샷 [{ tab:'탭 이름', img:'그림 이름', │
-   │                cap:'설명' }]. 그림은 파일 맨 아래 TOUR_SHOTS에 있어요 │
+   │                cap:'설명' }]. 그림은 tour-shots.js 에 있어요       │
+   │ wide           큰 그림이 들어가는 단계: true = 넓은 말풍선,          │
+   │                'xl' = 화면 전체가 들어가는 가장 큰 말풍선              │
    │ last           마지막 단계 표시 (버튼이 '시작하기'로 바뀜)           │
    └────────────────────────────────────────────────────────────────────┘
 
@@ -64,8 +66,8 @@ const TOUR_AUTO_DELAY = 1800;   // 자동 시작까지 기다리는 시간(밀�
 // 지금은 계통작성 · 작업계획만 보여줘요. 수요조사 설명(아래 TOUR_STEPS에 그대로 있어요)을 다시 열려면
 // { key:'수요조사', name:'수요조사', desc:'공간 사용 신청' } 한 줄을 아래에 추가하세요 ('전체 보기'도 원하면 { key:'전체', name:'전체 보기', desc:'처음부터 끝까지' }도)
 const TOUR_SECTIONS = [
-  { key:'계통작성', name:'계통작성',   desc:'계통 등록 · 수확' },
-  { key:'작업계획', name:'작업계획',   desc:'작업 요청과 기록' }
+  { key:'계통작성', name:'계통작성',   desc:'계획 채우기 · 수확 · 세대진전' },
+  { key:'작업계획', name:'작업계획',   desc:'작업 요청 · 완료 체크' }
 ];
 
 const TOUR_KEY = 'sb_tour_seen_v3'; // 이 값을 바꾸면 이미 본 사람들에게도 투어가 다시 한 번 뜹니다
@@ -85,131 +87,81 @@ const TOUR_STEPS = [
 
   /* ───────── 계통작성 ───────── */
   {
-    el:()=> document.getElementById('navBtnWork'),
-    before: tourGoSpace,
-    pad:5,
-    section:'계통작성',
-    title:'계통작성',
-    body:`재료를 등록하는 화면이에요. 누구나 쓸 수 있어요.`
-  },
-
-  {
-    el:()=> document.getElementById('workMapPanel'),
-    before: tourGoWork,
+    el:()=> { const c = document.querySelector('#workBedPanel .wbed-chip.plan'); return c ? c.closest('.wbed-slot') : null; },
+    before: tourShowPlanChip,
     pad:6,
-    skipIfMissing:true,
+    wide:true,
     section:'계통작성',
-    title:'① 방을 골라요',
-    body:`왼쪽 배치도에서 방을 눌러요.`
-  },
-
-  {
-    el:()=> document.getElementById('workBedPanel'),
-    before: tourGoWork,
-    pad:6,
-    skipIfMissing:true,
-    section:'계통작성',
-    title:'② 자리를 골라요',
-    body:`베드 칸을 눌러 <b>✓ 표시</b>를 해요. 빈 자리를 누르면 바로 <b>작성 칸</b>이, 계통이 있는 자리를 누르면 그 자리의 카드가 오른쪽에 나와요. 여러 자리를 고르면 자리마다 <b>개체수</b>를 적는 칸이 생겨요. 인공교배실은 <b>통로</b>도 한 자리예요.
-      <div class="t-tip">같은 계통을 여러 곳에 심을 땐 칸을 여러 개 누르세요. 개체수는 <b>베드마다</b> 적어요.</div>`
-  },
-
-  {
-    el:()=> document.querySelector('#workRoomDetail .batch-compose'),
-    before: tourOpenDemoBatchModal,
-    keepModal:true,
-    pad:8,
-    skipIfMissing:true,
-    section:'계통작성',
-    title:'③ 칸을 채워요',
-    body:`<b>사용 목적</b>(세대단축 · 인공교배 · 고온검정 · 기타)을 먼저 고르면 아래 칸이 바뀌어요. 목적별로 이렇게 채워요.
-      <div class="t-tip">계획이 있는 자리는 위의 <b>계획 카드</b>를 누르면 자동으로 채워져요.</div>`,
+    title:'계획이 있는 자리는',
+    body:`분기별 계획이 있는 빈 자리에는 <span class="t-key">📅 계획</span> 표시가 떠요. 그 자리를 눌러요.`,
     shots:[
-      { tab:'세대단축', img:'form_grow',  cap:'<b>작물 · 계통번호 · 교배조합 · 교배목적 · 세대</b>를 고르거나 적고, <b>시작일</b>을 고르면 종료일은 생육일수로 <b>자동 계산</b>돼요. 마지막에 베드별 개체수를 적어요.' },
-      { tab:'인공교배', img:'form_cross', cap:'계통번호 없이 <b>교배조합</b>(대표 1개, 더 있으면 <b>외 N조합</b>)과 <b>교배목적</b>, <b>사용기간</b>, 개체수를 적어요.' },
-      { tab:'고온검정', img:'form_heat',  cap:'<b>검정 목적 · 품종</b>, <b>처리 온도 · 처리 단계</b>, 사용기간, 개체수를 적어요. 반복 실험은 반복 수만큼 베드 칸을 눌러요.' },
-      { tab:'기타 실험', img:'form_etc',  cap:'<b>실험 내용</b>을 적고 <b>처리 요인</b>(온도 · 일장)을 고르면 조건 칸이 나와요. 조건이 바뀌면 <b>+ 구간 추가</b>를 눌러요.' }
+      { tab:'계획 표시', img:'plan_chip', cap:'빨간 테두리가 <b>📅 계획</b> 표시예요. 계획이 있는 빈 자리마다 떠요.' }
     ]
   },
 
   {
-    el:()=> document.querySelector('#workRoomDetail .batch-compose [onclick="submitBatchLocModal()"]'),
-    before: tourOpenDemoBatchModal,
+    el:()=> document.querySelector('#workRoomDetail .bp-go'),
+    before: ()=> tourOpenDemoBatchModal(tourSpotHasPlan),
     keepModal:true,
     pad:6,
-    skipIfMissing:true,
+    wide:true,
     section:'계통작성',
-    title:'④ 등록을 눌러요',
-    body:`누르면 그 자리에 카드가 생겨요.`
+    title:'분기별 계획이 있으면',
+    body:`누르면 그 자리의 <b>분기별 계획</b>이 떠요. <span class="t-key">이 계획으로 채우기</span>만 누르면 돼요.`,
+    shots:[
+      { tab:'① 누르기', img:'plan_fill', cap:'<b>집단 추가</b> 화면 위쪽에 그 자리의 <b>분기별 계획</b>이 떠요. 빨간 버튼만 누르세요.' },
+      { tab:'② 채워진 모습', img:'plan_filled', cap:'누르면 아래 <b>계통작성 칸</b>이 <b>자동으로 채워져요</b>.' }
+    ]
   },
 
   {
     el:()=> document.querySelector('#workRoomDetail button[onclick^="harvestAndReplant"], #workRoomDetail button[onclick^="completeHeatTest"]'),
     before: tourCollapseDemoBatchCard,
     pad:5,
-    skipIfMissing:true,
+    wide:'xl',
     section:'계통작성',
-    title:'수확했으면 [수확]을 눌러요',
-    body:`등록된 계통 카드의 <span class="t-key">수확</span> 버튼을 누르고, <b>"수확 처리할까요?"</b>가 뜨면 <b>확인</b>을 눌러요. 그 자리가 비워져요.
-      <div class="t-tip">계통 종류에 따라 버튼 이름만 달라요. 누르는 방법은 같아요.</div>`,
+    title:'수확했으면 직접 확인하고',
+    body:`수확을 했으면 <b>직접 확인</b>한 다음, 계통 카드의 <span class="t-key">수확</span> 버튼을 눌러 주세요.`,
     shots:[
-      { tab:'세대단축', img:'card_grow',  cap:'빨간 테두리가 누를 버튼이에요. 세대단축 계통은 <b>수확</b>을 눌러요.' },
-      { tab:'인공교배', img:'card_cross', cap:'인공교배 계통은 교배에 다 썼으면 <b>사용완료</b>를 눌러요.' },
-      { tab:'고온검정', img:'card_heat',  cap:'고온검정 계통은 검정이 끝났으면 <b>검정완료</b>를 눌러요.' },
-      { tab:'기타 실험', img:'card_etc',  cap:'기타 실험 계통은 실험이 끝났으면 <b>실험완료</b>를 눌러요.' }
+      { tab:'수확', img:'harvest_map', cap:'가운데 <b>베드 맵</b>에서 자리를 누르면 오른쪽에 그 자리의 <b>계통 카드</b>가 떠요. 빨간 <b>수확</b> 버튼을 눌러요.' }
     ]
   },
 
   {
-    el:()=> document.getElementById('tourHarvestDemo'),
+    el:()=> document.querySelector('#tourHarvestDemo .hv-replant'),
     before: tourShowHarvestDemo,
-    pad:6,
-    skipIfMissing:true,
+    pad:5,
+    wide:'xl',
     section:'계통작성',
-    title:'수확하면 이렇게 남아요',
-    body:`기록은 아래 <b>수확 완료 목록</b>에 남아요. 세대단축 계통은 거기서 <span class="t-key">세대진전</span>을 누르면 다음 세대로 새 자리에 심을 수 있어요. (고온검정 · 기타 실험은 <span class="t-key">다시 심기</span>)`,
+    title:'다음 세대는 세대진전',
+    body:`수확하면 <b>수확 완료 목록</b>에 남아요. 다음 세대로 이어서 심을 때는 <span class="t-key">세대진전</span>을 눌러요.
+      <div class="t-tip">열리는 입력칸에서 <b>세대</b>를 꼭 확인해 주세요! 지난 세대가 그대로 들어 있어요.</div>`,
     shots:[
-      { tab:'수확 완료 목록', img:'list', cap:'목적에 따라 이어서 하는 일이 달라요. 세대단축은 <b>세대진전</b>, 고온검정 · 기타 실험은 <b>다시 심기</b>, 인공교배는 <b>✓ 사용 완료</b>로 끝나요.' }
+      { tab:'① 누르기', img:'advance_map', cap:'수확하면 그 자리는 비워지고, 오른쪽 아래 <b>수확 완료 목록</b>에 남아요. 빨간 <b>세대진전</b> 버튼을 누르세요.' },
+      { tab:'② 세대 확인', img:'advance_form', cap:'누르면 입력칸이 열려요. 빨간 테두리가 <b>세대</b> 칸이에요. 지난 세대가 그대로 들어 있으니 <b>다음 세대로 확인 · 수정</b>해 주세요.' }
     ]
   },
 
   /* ───────── 작업계획 ───────── */
   {
-    el:()=> document.getElementById('navBtnTasks'),
-    pad:5,
-    section:'작업계획',
-    title:'작업계획',
-    body:`날짜별 작업 요청과 기록을 보는 화면이에요.`
-  },
-
-  {
-    el:()=> document.querySelector('.tasks-cal-col'),
-    before: tourGoTasks,
-    pad:6,
-    skipIfMissing:true,
-    section:'작업계획',
-    title:'날짜를 눌러요',
-    body:`점이 있는 날은 작업이 있어요. 누르면 오른쪽에 나와요.`
-  },
-
-  {
     el:()=> document.querySelector('#tasksViewWrap [onclick="openAddTaskModal()"]'),
     before: tourGoTasks,
     pad:5,
-    skipIfMissing:true,
     section:'작업계획',
-    title:'추가 버튼',
-    body:`<b>작물담당자</b>는 작업 <b>요청</b>, <b>작업담당자</b>는 한 일 <b>기록</b>을 적어요.`
+    title:'요청할 사항이 있으면',
+    body:`<span class="t-key">+ 작업 추가</span>를 누르고 비밀번호 <b>7942</b>를 입력해요.`
   },
 
   {
-    el:()=> document.querySelector('.tasks-list-col .task-row-wrap') || document.querySelector('.tasks-list-col'),
+    el:()=> document.querySelector('.tasks-list-col .task-row input[type="checkbox"]:not(:checked)') || document.querySelector('.tasks-list-col .task-row input[type="checkbox"]') || document.querySelector('.tasks-list-col'),
     before: tourShowTaskListExample,
     pad:6,
-    skipIfMissing:true,
     section:'작업계획',
-    title:'끝냈으면 체크',
-    body:`끝낸 요청은 왼쪽 <b>체크박스</b>에 체크해요.`
+    title:'끝났는지 확인하고 체크',
+    body:`작업이 끝났는지 <b>직접 확인</b>한 다음, 요청 왼쪽의 <b>체크 버튼</b>을 눌러요.`,
+    shots:[
+      { tab:'체크', img:'task_check', cap:'빨간 테두리 칸에 체크해요.' }
+    ]
   },
 
   /* ───────── 수요조사 ───────── */
@@ -381,7 +333,7 @@ function tourShowTaskListExample(){
 }
 
 // 투어용: 투어 방에서 비어 있는(kind='empty') 또는 계통이 있는(kind='filled') 첫 자리를 골라 작성 패널에 띄운다. 없으면 null
-function tourSelectWorkSpot(kind){
+function tourSelectWorkSpot(kind, accept){
   tourGoWork();
   const r = tourPickRoom();
   if(!r) return null;
@@ -390,6 +342,7 @@ function tourSelectWorkSpot(kind){
     for(const floor of info.floors){
       const filled = workSpotBatches(r, bedNo, floor).length > 0;
       if(filled !== (kind==='filled')) continue;
+      if(accept && !accept(r, bedNo, floor)) continue;   // 조건(예: 분기별 계획이 있는 자리)에 맞는 자리만
       const only = workOnlySpot();
       if(!only || only.bedNo!==bedNo || only.floor!==floor){
         setWorkOnlySpot(bedNo, floor);
@@ -401,12 +354,24 @@ function tourSelectWorkSpot(kind){
   return null;
 }
 
-function tourOpenDemoBatchModal(){
+// 베드 맵의 '📅 계획' 표시 단계용: 골라 둔 자리가 있으면 풀어서 지도를 깨끗하게 보여 준다
+function tourShowPlanChip(){
+  tourGoWork();
+  if(workMultiSpots.size){ workMultiSpots = new Set(); renderDetail('work'); }
+}
+
+function tourOpenDemoBatchModal(accept){
   const r = tourPickRoom();
   if(!r) return;
-  const spot = tourSelectWorkSpot('empty') || { bedNo: 1, floor: '1층' };
+  const spot = (accept && tourSelectWorkSpot('empty', accept)) || tourSelectWorkSpot('empty') || { bedNo: 1, floor: '1층' };
   if(batchCompose) return;
   openBatchLocationModal(r.id, null, spot);
+}
+
+// 분기별 계획 카드가 뜨는 빈 자리인지 (계통작성 계획 목록과 같은 기간: 오늘 앞뒤 한 달)
+function tourSpotHasPlan(r, bedNo, floor){
+  const today = todayKST(), lo = addMonthsYmd(today, -BATCH_PLAN_WINDOW_MONTHS), hi = addMonthsYmd(today, BATCH_PLAN_WINDOW_MONTHS);
+  return bedPlansAt(r.name, bedNo, floor).some(({ p })=> p.planned_start <= hi && (p.planned_end || p.planned_start) >= lo);
 }
 
 function tourGetDemoBatchId(){
@@ -569,7 +534,7 @@ function renderTourShots(){
   const imgEl = box.querySelector('img');
   if(imgEl && !imgEl.complete) imgEl.addEventListener('load', ()=> repositionTour());
   const boxEl = box.querySelector('.tour-shot-box');
-  if(boxEl && img.h / img.w * 320 > 260) box.insertAdjacentHTML('beforeend', '<div class="tour-shot-scroll">↕ 그림 안에서 스크롤하면 아래도 보여요</div>');
+  if(boxEl && !step.wide && img.h / img.w * 320 > 260) box.insertAdjacentHTML('beforeend', '<div class="tour-shot-scroll">↕ 그림 안에서 스크롤하면 아래도 보여요</div>');   // wide 단계의 그림은 상자에 맞춰 줄어들어 스크롤이 없다
 }
 
 function pickTourShot(i){ tourShotIdx = i; renderTourShots(); repositionTour(); }
@@ -579,6 +544,8 @@ function renderTourPop(){
   document.getElementById('tourStepNo').textContent = `${tourSection !== '전체' ? tourSection + ' · ' : ''}${tourIdx + 1} / ${tourSteps.length}`;
   document.getElementById('tourTitle').textContent = step.title;
   document.getElementById('tourBody').innerHTML = step.body;
+  document.getElementById('tourPop').classList.toggle('wide', !!step.wide);
+  document.getElementById('tourPop').classList.toggle('xl', step.wide === 'xl');
   tourShotIdx = 0;
   renderTourShots();
   document.getElementById('tourSkipRow').style.display = step.skippable ? '' : 'none';
