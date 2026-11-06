@@ -307,13 +307,25 @@
   .bulk-adv-name{ flex:1; min-width:0; font-size:12.5px; font-weight:800; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .bulk-adv-name small{ font-size:11px; font-weight:600; color:var(--ink-faint); }
   .batch-compose .bulk-adv-row input[data-bulk-qty]{ width:96px; flex-shrink:0; margin-bottom:0; padding:7px 9px; font-size:12.5px; }
-  .bulk-adv-loc{ display:flex; gap:7px; }
+  .bulk-adv-loc{ display:flex; flex-wrap:wrap; gap:7px; }   /* 방은 한 줄 전체, 그 아래 줄에 베드 · 층 */
   .batch-compose .bulk-adv-loc select{ flex:1; min-width:0; margin-bottom:0; padding:7px 9px; font-size:12.5px; }
+  .batch-compose .bulk-adv-loc select[data-bulk-room]{ flex-basis:100%; }
   .batch-compose input.bf-bulk-keep{ background:var(--line-soft); color:var(--ink-faint); font-style:italic; }
   .hv-date{ display:flex; align-items:baseline; gap:8px; margin:14px 0 6px; font-size:11.5px; font-weight:700; color:var(--ink-faint); }
   .hv-date b{ font-size:13px; font-weight:800; color:var(--ink); }
   .hv-date i{ margin-left:auto; font-style:normal; font-size:11px; }
-  .hv-row{ display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--line-soft); border-radius:10px; padding:10px 12px; margin-bottom:6px; }
+  /* 담당자 색: 줄 왼쪽의 세로 막대(--mgr)와 이름 알약(.hv-mgr). 막대는 모서리에서 잘리지 않게 줄 안쪽에 띄워 둔다 */
+  .hv-row{ position:relative; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--line-soft); border-radius:10px; padding:10px 12px 10px 20px; margin-bottom:6px; }
+  .hv-row::before{ content:''; position:absolute; left:8px; top:9px; bottom:9px; width:4px; border-radius:2px; background:var(--mgr, var(--line)); }
+  .hv-mgr{ display:inline-flex; align-items:center; gap:5px; padding:1px 9px; border-radius:var(--pill); font-size:11.5px; font-weight:800; line-height:1.5; color:var(--mgr); background:rgba(0,0,0,0.05); white-space:nowrap; }
+  @supports (background: color-mix(in srgb, red 10%, white)){ .hv-mgr{ background:color-mix(in srgb, var(--mgr) 13%, #fff); } }
+  .hv-mgr em{ font-style:normal; font-weight:700; opacity:0.75; }
+  .hv-meta > .hv-mgr{ margin-right:8px; }
+  .hv-meta > .hv-mgr:not(:last-child)::after{ content:none; }   /* 알약 뒤에는 '·' 구분점을 안 붙인다 */
+  .hv-legend{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 6px; margin:8px 0 2px; }
+  .hv-legend > span:first-child{ font-size:11.5px; font-weight:700; color:var(--ink-faint); margin-right:2px; }
+  .hv-bulk-mgrs{ display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
+  .hv-bulk-text .hv-bulk-mgrs .hv-mgr{ display:inline-flex; font-size:11px; color:var(--mgr); overflow:visible; text-overflow:clip; }
   .hv-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
   .hv-title{ display:flex; align-items:center; flex-wrap:wrap; gap:3px 6px; min-width:0; }
   .hv-title .crop-dot{ flex-shrink:0; }

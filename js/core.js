@@ -1,4 +1,4 @@
-/* core.js — 기본 설정 · 공통 도구: 데이터베이스 연결, 한국 시간 날짜 계산, 시설(방·베드) 구조, 화면 상태값, 관리자 모드, 작물 색, 전체 데이터 불러오기(loadAll) */
+/* core.js — 기본 설정 · 공통 도구: 데이터베이스 연결, 한국 시간 날짜 계산, 시설(방·베드) 구조, 화면 상태값, 관리자 모드, 작물 색 · 담당자 색, 전체 데이터 불러오기(loadAll) */
 
 const SUPABASE_URL = "https://yfnssmflmzebrfdykbme.supabase.co";
 
@@ -355,6 +355,36 @@ function cropColor(name){
   let h = 0;
   for(let i=0;i<name.length;i++){ h = (h*31 + name.charCodeAt(i)) % 997; }
   return CROP_PALETTE[h % CROP_PALETTE.length];
+}
+
+// 담당자(materials.manager)별 색 — 수확 완료 목록에서 누구 계통인지 한눈에 구분하려고 쓴다.
+// 색은 이름 글자가 아니라 '담당자가 처음 나타난 순서'(그 사람의 가장 오래된 계통 등록일)대로 차례로 나눠 준다.
+//  → 이름 글자로 색을 정하면 두 사람이 같은 색이 되기 쉽고, 새 담당자가 생겨도 기존 사람 색은 그대로라서 매일 봐도 안 헷갈린다. (13명째부터는 색이 되풀이된다)
+// 글자색으로도 쓰이므로 연한 바탕 위에서 읽히는 중간~진한 색만 골랐다. 작물 색(위)과 구분되게 채도를 높였다.
+const MANAGER_PALETTE = ['#C9344A','#2468C9','#C75B12','#3F8A2A','#8E3FC4','#0E86B5','#A87900','#C2338A','#5144C9','#7B5535','#4F6475','#6E8A12'];
+
+const MANAGER_NONE_COLOR = '#C5CEC9';   // 담당자가 비어 있는 계통
+
+let managerRoster = { src: null, index: new Map() };   // materials 배열이 바뀌었을 때만 다시 계산한다
+
+function managerName(v){ return String(v ?? '').trim(); }
+
+function managerColor(name){
+  const key = managerName(name);
+  if(!key) return MANAGER_NONE_COLOR;
+  if(managerRoster.src !== materials || !managerRoster.index.has(key)){
+    const first = new Map();   // 담당자 → 가장 오래된 등록 시각 (created_at이 없으면 맨 뒤)
+    materials.forEach(m=>{
+      const k = managerName(m.manager);
+      if(!k) return;
+      const t = m.created_at || '9999';
+      if(!first.has(k) || t < first.get(k)) first.set(k, t);
+    });
+    const order = [...first].sort((a, b)=> a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : (a[0] < b[0] ? -1 : 1)).map(x=> x[0]);
+    managerRoster = { src: materials, index: new Map(order.map((k, i)=> [k, i])) };
+  }
+  const i = managerRoster.index.get(key);
+  return i == null ? MANAGER_NONE_COLOR : MANAGER_PALETTE[i % MANAGER_PALETTE.length];
 }
 
 // 분기별 계획의 색: 고온검정은 작물 색에 붉은 기를 살짝 섞는다. 빨강을 20% 섞어서 색조(hue)만 가져오고 채도 · 밝기는 작물 색 그대로 둔다

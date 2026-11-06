@@ -235,11 +235,18 @@ function loadBatchFromPlan(idx){
 // '집단 추가 · 복사' 입력칸은 팝업이 아니라 계통작성 오른쪽 작성 패널(#workRoomDetail) 안에 바로 열린다.
 // (함수 이름의 'Modal'은 예전 팝업 시절 이름을 그대로 쓴 것이다)
 function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
-  const room = rooms.find(r=>r.id===roomId);
+  const srcRoom = rooms.find(r=>r.id===roomId);   // 작성 칸을 연 방 (세대진전 · 다시 심기면 수확한 방)
   const panel = document.getElementById('workRoomDetail');
-  if(!room || !panel) return;
-  if(blockInactiveRoom(room)) return;   // 사용 중지된 방에는 집단 추가 · 복사 · 세대진전 · 다시 심기로 새로 심을 수 없다
-  batchLocModalRoomId = roomId;
+  if(!srcRoom || !panel) return;
+  // room = 새로 심을 방. 집단 추가 · 복사는 연 방 그대로. 세대진전 · 다시 심기는 방을 고를 수 있어서, 수확한 방을 더 못 쓰면(사용 중지 등)
+  // 심을 수 있는 첫 방에서 시작한다 (심을 수 있는 방이 하나도 없을 때만 막는다)
+  let room = srcRoom;
+  if(opts && opts.replant){
+    const plantable = plantableRooms();
+    if(plantable.length){ if(!plantable.includes(srcRoom)) room = plantable[0]; }
+    else if(blockInactiveRoom(srcRoom)) return;
+  } else if(blockInactiveRoom(srcRoom)) return;   // 사용 중지된 방에는 집단 추가 · 복사로 새로 심을 수 없다
+  batchLocModalRoomId = room.id;
   const cfg = DEFAULT_ROOM_CONFIG[room.name];
   const bedCount = cfg ? cfg.bed_count : (room.structure_count||0);
   const bedFloors = cfg ? cfg.bed_floors : (room.bed_floors||2);
@@ -253,7 +260,7 @@ function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
         ${bfLbl('베드별 개체수', true)}
         <div class="bf-qty-list" data-keys="${qtyTargets.map(t=> `${t.bedNo}|${t.floor}`).join(',')}">${batchQtyRowsHtml(room, qtyTargets)}</div>
       </div>` : undefined;
-  const roomText = roomLabel(room.name);
+  const roomText = roomLabel(srcRoom.name);   // 제목 아래 글: 작성 칸을 연 방 (세대진전 · 다시 심기는 수확한 방, 심을 방은 아래 '심을 위치'에서 고른다)
   // 수확 완료 목록의 [세대진전] · [다시 심기]로 열었는지: 같은 입력칸이고, 제목 · 위치 안내만 다르다
   const replant = !!(opts && opts.replant);
   const advance = replant && !!opts.advance;
@@ -280,7 +287,7 @@ function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
   const defaultCropName = prefill?.name || null;
 
   if(bulk){
-    document.getElementById('batchLocLocation').innerHTML = bulkAdvanceLocHtml(room, bulk.records, bulk.spots);
+    document.getElementById('batchLocLocation').innerHTML = bulkAdvanceLocHtml(bulk.records, bulk.spots);
   } else if(multiTargets){
     document.getElementById('batchLocLocation').innerHTML = workMultiLocationHtml(room, multiTargets);
   } else if(defaultChecked){
@@ -289,24 +296,26 @@ function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
       ${prefill ? '' : workSpotOccupancyHtml(room, [{ bedNo: Number(defaultChecked.bedNo), floor: defaultChecked.floor }])}
     `;
   } else if(bedCount > 0){
-    let bedOptions = '';
-    for(let i=1;i<=bedCount;i++){ bedOptions += `<option value="${i}">베드 ${i}</option>`; }
-    if(AISLE_ROOMS.has(room.name)) bedOptions += `<option value="${AISLE_BED_NO}">통로</option>`;   // 인공교배실은 통로로도 복사할 수 있다
     const floorOptions = locFloorOptionsHtml(1, bedFloors);
+    // [세대진전] · [다시 심기]는 맨 위에 '방' 칸이 더 붙는다 (한 줄에 방, 그 아래 줄에 베드 · 층)
+    const roomSelHtml = replant ? `<select id="locRoomSel" style="flex:1 1 100%; min-width:0; margin-bottom:0;" onchange="syncLocRoom()">${plantRoomOptionsHtml(room.id)}</select>` : '';
     document.getElementById('batchLocLocation').innerHTML = `
       <label style="font-size:11px; color:var(--ink-faint); font-weight:700; display:block; margin-bottom:4px;">${locLabel}</label>
-      <div style="display:flex; gap:7px; margin-bottom:11px;">
-        <select id="locBedNo" style="flex:1; min-width:0; margin-bottom:0;" onchange="syncLocFloorOptions(${bedFloors})">${bedOptions}</select>
+      <div style="display:flex; flex-wrap:wrap; gap:7px; margin-bottom:11px;">
+        ${roomSelHtml}
+        <select id="locBedNo" style="flex:1; min-width:0; margin-bottom:0;" onchange="syncLocFloorOptions()">${locBedOptionsHtml(room)}</select>
         <select id="locFloorSel" style="flex:1; min-width:0; margin-bottom:0;">${floorOptions}</select>
       </div>
     `;
-    // [세대진전] · [다시 심기]: 미리 골라 둔 자리로 맞춘다 (층 칸은 베드를 고른 뒤에 채워진다)
-    if(replant && opts.spot){
+    // [세대진전] · [다시 심기]: 미리 골라 둔 자리로 맞춘다 (층 칸은 베드를 고른 뒤에 채워진다).
+    // 미리 골라 둔 자리(opts.spot)는 수확한 방 기준이라, 다른 방에서 시작할 때는 그 방의 첫 빈 자리를 쓴다
+    const presel = replant ? ((opts.spot && room === srcRoom) ? opts.spot : firstEmptySpot(room)) : null;
+    if(presel){
       const bedSel = document.getElementById('locBedNo'), floorSel = document.getElementById('locFloorSel');
-      if([...bedSel.options].some(o=> o.value === String(opts.spot.bedNo))){
-        bedSel.value = String(opts.spot.bedNo);
-        syncLocFloorOptions(bedFloors);
-        if([...floorSel.options].some(o=> o.value === opts.spot.floor)) floorSel.value = opts.spot.floor;
+      if([...bedSel.options].some(o=> o.value === String(presel.bedNo))){
+        bedSel.value = String(presel.bedNo);
+        syncLocFloorOptions();
+        if([...floorSel.options].some(o=> o.value === presel.floor)) floorSel.value = presel.floor;
       }
     }
   } else {
@@ -489,12 +498,40 @@ function locFloorOptionsHtml(bedNo, bedFloors){
   return bedFloors===2 ? `<option value="1층">1층</option><option value="2층">2층</option>` : `<option value="1층">1층</option>`;
 }
 
-function syncLocFloorOptions(bedFloors){
+// 복사 · 세대진전 · 다시 심기할 위치의 베드 칸: 그 방의 베드 번호들 (인공교배실은 통로도). selectedBedNo가 있으면 그 베드를 골라 둔다
+function locBedOptionsHtml(room, selectedBedNo){
+  const info = workRoomInfo(room);
+  let html = '';
+  for(let i = 1; i <= info.bedCount; i++) html += `<option value="${i}"${i===selectedBedNo ? ' selected' : ''}>베드 ${i}</option>`;
+  if(AISLE_ROOMS.has(room.name)) html += `<option value="${AISLE_BED_NO}"${selectedBedNo===AISLE_BED_NO ? ' selected' : ''}>통로</option>`;   // 인공교배실은 통로로도 심을 수 있다
+  return html;
+}
+
+// 지금 고른 심을 방의 층 수 (심을 방 칸이 없으면 작성 칸을 연 방)
+function locBedFloors(){
+  const room = rooms.find(r=> r.id===batchLocModalRoomId);
+  return room ? workRoomInfo(room).bedFloors : 2;
+}
+
+function syncLocFloorOptions(){
   const bedSel = document.getElementById('locBedNo'), floorSel = document.getElementById('locFloorSel');
   if(!bedSel || !floorSel) return;
   const keep = floorSel.value;
-  floorSel.innerHTML = locFloorOptionsHtml(parseInt(bedSel.value), bedFloors);
+  floorSel.innerHTML = locFloorOptionsHtml(parseInt(bedSel.value), locBedFloors());
   if([...floorSel.options].some(o=> o.value===keep)) floorSel.value = keep;
+}
+
+// [세대진전] · [다시 심기]에서 심을 방을 바꿨을 때: 베드 · 층 칸을 그 방 것으로 바꾸고, 그 방의 첫 빈 자리를 골라 둔다
+function syncLocRoom(){
+  const roomSel = document.getElementById('locRoomSel'), bedSel = document.getElementById('locBedNo'), floorSel = document.getElementById('locFloorSel');
+  const room = roomSel && rooms.find(r=> r.id===roomSel.value);
+  if(!room || !bedSel || !floorSel) return;
+  batchLocModalRoomId = room.id;
+  const info = workRoomInfo(room);
+  const spot = firstEmptySpot(room) || { bedNo: 1, floor: info.floors.slice(-1)[0] };
+  bedSel.innerHTML = locBedOptionsHtml(room, spot.bedNo);
+  floorSel.innerHTML = locFloorOptionsHtml(spot.bedNo, info.bedFloors);
+  if([...floorSel.options].some(o=> o.value===spot.floor)) floorSel.value = spot.floor;
 }
 
 // ── 계통작성 입력 양식: 수요조사와 같은 모양이고, 사용 목적(세대단축 · 인공교배 · 고온검정 · 기타)마다 받는 칸이 다르다 ─────────
@@ -1088,10 +1125,13 @@ function openCopyModal(batchId){
 
 async function submitBatchLocModal(){
   if(tourPreview){ closeBatchLocModal(); showToast('이렇게 등록돼요! 투어 중이라 실제로 저장되진 않았어요'); return; }
+  if(batchCompose && batchCompose.bulk){ await submitBulkAdvance(); return; }   // 수확 완료 목록의 [N건 한번에 세대진전] (심을 방은 줄마다 달라서 거기서 확인한다)
+  // [세대진전] · [다시 심기]는 '심을 위치'에서 고른 방에 심는다
+  const roomSelEl = document.getElementById('locRoomSel');
+  if(roomSelEl && roomSelEl.value) batchLocModalRoomId = roomSelEl.value;
   // 입력하는 사이에 관리자가 방을 사용 중지했으면 등록하지 않는다
   const composeRoom = rooms.find(r=> r.id===batchLocModalRoomId);
   if(composeRoom && blockInactiveRoom(composeRoom)) return;
-  if(batchCompose && batchCompose.bulk){ await submitBulkAdvance(); return; }   // 수확 완료 목록의 [N건 한번에 세대진전]
   const wasReplant = !!(batchCompose && batchCompose.replant);   // 수확 완료 목록의 [세대진전] · [다시 심기]로 연 입력칸인지
   const wasAdvance = !!(batchCompose && batchCompose.advance);
   const replantSourceId = wasReplant ? batchCompose.sourceId : null;   // 다시 심은 원래(수확 완료) 계통 — 등록되면 수확 완료 목록에서 뺀다
@@ -1128,7 +1168,8 @@ async function submitBatchLocModal(){
 
   const occupied = targets.filter(t=> materials.some(m=> m.room_id===batchLocModalRoomId && m.structure_no===t.bedNo && m.floor===t.floor && !m.harvest_confirmed_at));
   if(occupied.length){
-    const where = occupied.map(t=> spotText(t.bedNo, t.floor)).join(', ');
+    const roomPrefix = (wasReplant && composeRoom && composeRoom.id !== workActiveRoomId) ? `${roomLabel(composeRoom.name)} ` : '';   // 보던 방이 아닌 다른 방이면 방 이름도
+    const where = occupied.map(t=> roomPrefix + spotText(t.bedNo, t.floor)).join(', ');
     if(!confirm(`${where}에는 이미 등록된 작물이 있어요.\n그래도 ${targets.length>1 ? '모두 ' : ''}새로 추가할까요?`)) return;
   }
 
@@ -1175,8 +1216,14 @@ async function submitBatchLocModal(){
     const { error: rpErr } = await sb.from('materials').update({ replanted_at: new Date().toISOString() }).eq('id', replantSourceId);
     if(rpErr) alert('등록은 됐지만, 수확 완료 목록에서 자동으로 빼지 못했어요.\n\n(관리자 확인 필요) Supabase SQL Editor에서 아래를 한 번 실행해주세요:\n\n' + MATERIAL_REPLANT_SQL + '\n\n' + (rpErr.message||''));
   }
-  showToast(wasAdvance ? `세대진전으로 심었어요 · ${spotText(targets[0].bedNo, targets[0].floor)}${payload.generation ? ` · ${payload.generation}` : ''}` : wasReplant ? `다시 심었어요 · ${spotText(targets[0].bedNo, targets[0].floor)}` : targets.length>1 ? `${targets.length}곳에 등록됐어요` : '등록됐어요');
-  if(multiEl || wasReplant){
+  // 보고 있는 방이 아닌 다른 방에 심었으면 어느 방인지 알려 준다 (자리 이름 앞에 방 이름)
+  const plantedElsewhere = wasReplant && composeRoom && composeRoom.id !== workActiveRoomId;
+  const plantedAt = (plantedElsewhere ? `${roomLabel(composeRoom.name)} ` : '') + spotText(targets[0].bedNo, targets[0].floor);
+  showToast(wasAdvance ? `세대진전으로 심었어요 · ${plantedAt}${payload.generation ? ` · ${payload.generation}` : ''}` : wasReplant ? `다시 심었어요 · ${plantedAt}` : targets.length>1 ? `${targets.length}곳에 등록됐어요` : '등록됐어요');
+  if(plantedElsewhere){
+    // 다른 방에 심었으면 보던 방(수확 완료 목록이 있는 방)에 그대로 머물고 선택만 푼다 — 이어서 다른 계통도 세대진전할 수 있게
+    resetWorkMulti();
+  } else if(multiEl || wasReplant){
     // 여러 자리 등록 · 다시 심기를 마쳤으면 (첫 번째) 자리만 열어서 방금 등록한 계통을 바로 보여준다
     setWorkOnlySpot(targets[0].bedNo, targets[0].floor);
   }
