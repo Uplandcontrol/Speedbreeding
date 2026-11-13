@@ -98,7 +98,7 @@ function renderTasksView(){
             ${t.requester_name ? `<span class="task-requester-tag">담당자: ${escapeHtml(t.requester_name)}</span>` : ''}
           </div>
         </label>
-        ${g.ids.length===1 ? `<button class="task-cancel-btn" onclick="editTaskItem('${g.ids[0]}')" title="요청 수정" style="width:auto; padding:0 10px; font-size:11px; font-weight:700;">✏️ 수정</button>` : ''}
+        <button class="task-cancel-btn" onclick="editTaskItem('${idsCsv}')" title="요청 수정" style="width:auto; padding:0 10px; font-size:11px; font-weight:700;">✏️ 수정</button>
         <button class="task-cancel-btn" onclick="cancelTaskGroup('${idsCsv}')" title="요청 취소">✕</button>
       </div>
     `;
@@ -119,7 +119,7 @@ function renderTasksView(){
             ${t.note ? `<span class="task-row-note worker-note">${escapeHtml(t.note)}</span>` : ''}
           </div>
         </div>
-        <button class="task-cancel-btn" onclick="editTaskItem('${g.ids[0]}')" title="기록 수정" style="width:auto; padding:0 10px; font-size:11px; font-weight:700;">✏️ 수정</button>
+        <button class="task-cancel-btn" onclick="editTaskItem('${idsCsv}')" title="기록 수정" style="width:auto; padding:0 10px; font-size:11px; font-weight:700;">✏️ 수정</button>
         <button class="task-cancel-btn" onclick="cancelTaskGroup('${idsCsv}')" title="기록 취소">✕</button>
       </div>
     `;
@@ -236,11 +236,21 @@ function setTaskViewDate(v){
   renderTasksView();
 }
 
-let editingTaskId = null;
+let editingTaskGroup = null;      // 지금 고치는 묶음의 id 목록 (같은 요청을 베드 여러 개에 건 것도 한 묶음)
+let editSelectedBeds = new Set(); // 수정 창에서 고른 베드
 
-async function editTaskItem(id){
-  const t = dailyTasks.find(x=>x.id===id);
-  if(!t) return;
+// 수정 창의 장소 목록. 지금은 쓰지 않는 방이어도 원래 장소가 사라져 '시설 전체'로 바뀌지 않게 끼워 넣는다
+function editRoomOptionsHtml(selected){
+  const names = [...new Set([...ROW1, ...ROW2])].filter(n=>!isMutedRoom(n));
+  if(selected && !names.includes(selected)) names.push(selected);
+  return `<option value="">시설 전체</option>${names.map(n=>`<option value="${escapeHtml(n)}" ${selected===n?'selected':''}>${escapeHtml(n)}</option>`).join('')}`;
+}
+
+async function editTaskItem(idsCsv){
+  const ids = String(idsCsv).split(',');
+  const rows = dailyTasks.filter(x=> ids.includes(x.id));
+  if(!rows.length) return;
+  const t = rows[0];
   const isWorkerItem = t.source==='worker';
   const requiredLabel = isWorkerItem ? '작업담당자' : '작물담당자';
   const hasAuth = isWorkerItem ? workerAuth : materialAuth;
@@ -257,53 +267,140 @@ async function editTaskItem(id){
     }
   }
 
-  editingTaskId = id;
-  const isWorkerLog = isWorkerItem;
-  const roomSelectHtml = `<option value="">시설 전체</option>${[...new Set([...ROW1, ...ROW2])].filter(n=>!isMutedRoom(n)).map(n=>`<option value="${escapeHtml(n)}" ${t.room_name===n?'selected':''}>${escapeHtml(n)}</option>`).join('')}`;
-  document.getElementById('editTaskModalTitle').textContent = isWorkerLog ? '작업 기록 수정' : '요청사항 수정';
+  editingTaskGroup = { ids: rows.map(r=>r.id) };
+  editSelectedBeds = new Set(rows.map(r=>r.bed_no).filter(b=>b!=null));
+  const textareaStyle = 'width:100%; box-sizing:border-box; padding:10px 12px; border:1.2px solid var(--line); border-radius:9px; font-family:inherit; font-size:13px; resize:vertical;';
+  document.getElementById('editTaskModalTitle').textContent = isWorkerItem ? '작업 기록 수정' : '요청사항 수정';
   document.getElementById('editTaskModalBody').innerHTML = `
-    <select id="editTaskRoomInput">${roomSelectHtml}</select>
-    <div class="row2">
-      <input id="editTaskBedInput" type="number" placeholder="베드 번호(선택)" value="${t.bed_no ?? ''}" />
-      <select id="editTaskFloorInput">
-        <option value="전체" ${(!t.floor||t.floor==='전체')?'selected':''}>층 전체</option>
-        <option value="1층" ${t.floor==='1층'?'selected':''}>1층</option>
-        <option value="2층" ${t.floor==='2층'?'selected':''}>2층</option>
-      </select>
+    <select id="editTaskRoomInput" onchange="renderEditBedChips()">${editRoomOptionsHtml(t.room_name)}</select>
+    <div id="editTaskBedChipWrap"></div>
+    <select id="editTaskFloorInput">
+      <option value="전체" ${(!t.floor||t.floor==='전체')?'selected':''}>층 전체</option>
+      <option value="1층" ${t.floor==='1층'?'selected':''}>1층</option>
+      <option value="2층" ${t.floor==='2층'?'selected':''}>2층</option>
+    </select>
+    <textarea id="editTaskNoteInput" rows="5" style="${textareaStyle}">${escapeHtml(t.note||'')}</textarea>
+    ${!isWorkerItem ? `<input id="editTaskRequesterInput" placeholder="요청자 이름" value="${escapeHtml(t.requester_name||'')}" />` : ''}
+    <div>
+      <div style="font-size:11px; font-weight:700; color:var(--ink-faint); margin-bottom:6px;">날짜</div>
+      <input id="editTaskDateInput" type="date" value="${escapeHtml(t.task_date||taskViewDate)}" />
     </div>
-    <textarea id="editTaskNoteInput" rows="5" style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.2px solid var(--line); border-radius:9px; font-family:inherit; font-size:13px; resize:vertical;">${escapeHtml(t.note||'')}</textarea>
-    ${!isWorkerLog ? `<input id="editTaskRequesterInput" placeholder="요청자 이름" value="${escapeHtml(t.requester_name||'')}" />` : ''}
   `;
+  renderEditBedChips(true);
   document.getElementById('editTaskModalOverlay').classList.add('open');
+}
+
+// keep=true면 원래 고른 베드를 그대로 두고(창을 처음 열 때), 아니면 비운다(장소를 바꿨을 때)
+function renderEditBedChips(keep){
+  if(!keep) editSelectedBeds = new Set();
+  const wrap = document.getElementById('editTaskBedChipWrap');
+  if(!wrap) return;
+  const roomName = document.getElementById('editTaskRoomInput').value;
+  const cfg = roomBedConfig(roomName);
+  const maxSel = Math.max(0, ...editSelectedBeds);
+  if(!roomName || (!cfg && !maxSel)){
+    const msg = roomName ? '이 장소는 베드 지정이 없어요' : '시설 전체예요 (베드 지정 없음)';
+    wrap.innerHTML = `<div style="font-size:11.5px; color:var(--ink-faint); padding:4px 0;">${msg}</div>`;
+    return;
+  }
+  const count = Math.max(cfg ? cfg.bed_count : 0, maxSel);
+  const beds = Array.from({length: count}, (_,i)=> i+1);
+  wrap.innerHTML = `
+    <div style="font-size:11px; font-weight:700; color:var(--ink-faint); margin-bottom:6px;">베드 선택 (여러 개 가능, 안 고르면 방 전체)</div>
+    <div class="task-bed-chips">
+      ${beds.map(b=>`<button type="button" class="task-bed-chip ${editSelectedBeds.has(b)?'active':''}" data-bed="${b}" onclick="toggleEditBedChip(${b}, this)">베드 ${b}</button>`).join('')}
+      <button type="button" class="task-bed-chip all" onclick="selectAllEditBedChips()">전체</button>
+    </div>
+  `;
+}
+
+function toggleEditBedChip(bed, el){
+  if(editSelectedBeds.has(bed)){ editSelectedBeds.delete(bed); el.classList.remove('active'); }
+  else{ editSelectedBeds.add(bed); el.classList.add('active'); }
+}
+
+function selectAllEditBedChips(){
+  const chips = document.querySelectorAll('#editTaskBedChipWrap .task-bed-chip[data-bed]');
+  const allSelected = editSelectedBeds.size === chips.length;
+  editSelectedBeds = new Set();
+  chips.forEach(el=>{
+    if(!allSelected){ editSelectedBeds.add(parseInt(el.dataset.bed)); el.classList.add('active'); }
+    else{ el.classList.remove('active'); }
+  });
 }
 
 function closeEditTaskModal(){
   document.getElementById('editTaskModalOverlay').classList.remove('open');
-  editingTaskId = null;
+  editingTaskGroup = null;
 }
 
 async function saveEditedTask(){
   if(tourBlockWrite()) return;
-  const t = dailyTasks.find(x=>x.id===editingTaskId);
-  if(!t) return;
+  const grp = editingTaskGroup;
+  if(!grp) return;
+  const rows = dailyTasks.filter(x=> grp.ids.includes(x.id));
+  if(!rows.length){
+    alert('이미 지워졌거나 바뀐 항목이에요. 화면을 새로 불러올게요.');
+    closeEditTaskModal();
+    await loadAll();
+    return;
+  }
+  const sample = rows[0];
   const room_name = document.getElementById('editTaskRoomInput').value || null;
-  const bedVal = document.getElementById('editTaskBedInput').value;
-  const bed_no = bedVal===''? null : parseInt(bedVal);
   const floor = document.getElementById('editTaskFloorInput').value;
-  const note = document.getElementById('editTaskNoteInput').value || null;
+  const note = document.getElementById('editTaskNoteInput').value.trim();
+  const task_date = document.getElementById('editTaskDateInput').value;
   const requesterEl = document.getElementById('editTaskRequesterInput');
   if(!note){ alert('내용을 꼭 적어주세요!'); return; }
+  if(!task_date){ alert('날짜를 골라주세요!'); return; }
 
-  const payload = { room_name, bed_no, floor, note };
+  const common = { room_name, floor, note, task_date };
   if(requesterEl){
-    if(!requesterEl.value){ alert('요청자 이름을 적어주세요!'); return; }
-    payload.requester_name = requesterEl.value;
+    const name = requesterEl.value.trim();
+    if(!name){ alert('요청자 이름을 적어주세요!'); return; }
+    common.requester_name = name;
   }
 
-  const { error } = await sb.from('daily_tasks').update(payload).eq('id', editingTaskId);
-  if(error){ alert('수정 실패!\n\n'+error.message); return; }
+  // 고른 베드 목록에 맞춰: 그대로인 베드는 고치고, 새로 고른 베드는 추가하고, 뺀 베드는 지운다
+  const bedNos = (room_name && editSelectedBeds.size) ? Array.from(editSelectedBeds).sort((a,b)=>a-b) : [null];
+  const keepIds = [], dropIds = [];
+  rows.forEach(r=> (bedNos.includes(r.bed_no ?? null) ? keepIds : dropIds).push(r.id));
+  const have = new Set(rows.map(r=> r.bed_no ?? null));
+  const allDone = rows.every(r=> r.completed_at);
+  const inserts = bedNos.filter(b=> !have.has(b)).map(bed_no => ({
+    task_type: sample.task_type, source: sample.source ?? null, requester_name: sample.requester_name ?? null,
+    completed_at: allDone ? sample.completed_at : null,
+    bed_no, ...common
+  }));
+
+  const fail = async (what, error)=>{
+    alert(`${what} 실패!\n\n${error.message||JSON.stringify(error)}\n\n일부만 바뀌었을 수 있어요. 화면을 새로 불러올게요.`);
+    await loadAll();
+  };
+  if(keepIds.length){
+    const { error } = await sb.from('daily_tasks').update(common).in('id', keepIds);
+    if(error){ alert('수정 실패!\n\n'+(error.message||JSON.stringify(error))); return; }
+  }
+  if(inserts.length){
+    const { error } = await sb.from('daily_tasks').insert(inserts);
+    if(error){ await fail('베드 추가', error); return; }
+  }
+  if(dropIds.length){
+    const { error } = await sb.from('daily_tasks').delete().in('id', dropIds);
+    if(error){ await fail('베드 빼기', error); return; }
+  }
+
   closeEditTaskModal();
-  showToast('수정됐어요');
+  let msg = '수정됐어요';
+  if(task_date !== sample.task_date){
+    // 날짜를 옮겼으면 고친 항목이 화면에서 사라지지 않게 그 날짜로 따라간다
+    const [y, m, d] = task_date.split('-').map(Number);
+    taskViewDate = task_date;
+    taskCalendarMonth = new Date(y, m-1, 1);
+    msg = `수정됐어요 (${m}월 ${d}일로 옮겼어요)`;
+  }
+  if(taskFilterRoom && room_name !== taskFilterRoom) taskFilterRoom = '';
+  showToast(msg);
   await loadAll();
 }
 
