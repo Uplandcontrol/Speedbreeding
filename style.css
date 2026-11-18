@@ -974,8 +974,7 @@
   /* 분기별 계획 → 계통작성: 집단 추가 창 위쪽의 '계획 불러오기' 영역 */
   .bp-ref{ border:1.5px solid var(--line-soft); border-radius:var(--radius-md); background:#F5F8F6; padding:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:7px; }
   .bp-ref-title{ font-size:11.5px; font-weight:800; color:var(--teal-deep); }
-  .bp-ref-hint{ font-size:11px; color:var(--ink-faint); line-height:1.4; }
-  /* 계획 카드: 카드 전체가 버튼이다. 계통번호를 가장 크게, 그 아래 작물·세대, 기간·규모·담당은 라벨/값 표로 보여준다 */
+  .bp-ref-hint{ font-size:11px; color:var(--ink-faint); line-height:1.4; }  /* 계획 카드: 카드 전체가 버튼이다. 계통번호를 가장 크게, 그 아래 작물·세대, 기간·규모·담당은 라벨/값 표로 보여준다 */
   .bp-cards{ display:flex; flex-direction:column; gap:8px; max-height:400px; overflow-y:auto; }
   .bp-card{
     display:flex; align-items:stretch; flex-wrap:wrap; gap:8px 12px; background:#fff; border:1.5px solid var(--line-soft); border-radius:var(--radius-md);
@@ -1032,6 +1031,8 @@
   .batch-compose .bf-qty-row{ display:flex; align-items:center; gap:10px; }
   .batch-compose .bf-qty-row span{ width:110px; flex-shrink:0; font-size:12.5px; font-weight:700; color:var(--ink); }
   .batch-compose .bf-qty-row input{ flex:1; min-width:0; width:auto; margin-bottom:0; }
+  /* 반복 실험이면 줄마다 '반복 1' 이름표가 붙는다 */
+  .batch-compose .bf-qty-row .bf-qty-rep{ width:auto; padding:2px 8px; border-radius:var(--pill); background:var(--teal-soft); color:var(--teal-deep); font-size:11px; font-weight:800; white-space:nowrap; }
   /* 베드별 개체수 줄: 이미 재료가 있는 자리는 '사용중 N' 뱃지를 붙인다 */
   .batch-compose .bf-qty-row .bf-qty-used{ flex-shrink:0; font-style:normal; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:var(--pill); background:#FBEEDD; color:#8A4E14; white-space:nowrap; }
   /* 작성 칸 위쪽 자리 안내: 이미 재료가 있는 자리(주황) · 모두 빈 자리(초록) */
@@ -1055,10 +1056,25 @@
   .bf-sec{ margin-bottom:16px; }
   .bf-lbl{ font-size:11px; font-weight:700; color:var(--ink-faint); margin-bottom:6px; }
   .bf-req{ color:var(--danger); }
-  /* 고온검정 '반복이 있는 검정이라면' 등록 안내 */
+  /* 고온검정 [반복 실험이에요] 체크와, 체크하면 펼쳐지는 단계별 안내 (품종 → 반복 수 → 베드 칸 → 개체수) */
   .bf-guide{ background:var(--teal-soft); border-radius:var(--radius-sm); padding:10px 12px; font-size:11.5px; line-height:1.6; color:var(--ink-soft); }
   .bf-guide b{ font-weight:800; color:var(--teal-deep); }
-  .bf-guide ol{ margin:4px 0 0; padding-left:17px; }
+  .bf-guide ol{ margin:0; padding-left:17px; }
+  .bf-guide li + li{ margin-top:5px; }
+  .bf-repeat{ margin-top:8px; }
+  .bf-rep-note{ margin-top:6px; padding-top:6px; border-top:1px dashed rgba(30,138,115,0.3); }
+  .batch-compose .bf-check, .survey-form-panel .bf-check{ display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:12.5px; color:var(--ink); line-height:1.45; }
+  .batch-compose .bf-check input, .survey-form-panel .bf-check input{ width:16px; height:16px; padding:0; margin:2px 0 0; flex-shrink:0; accent-color:var(--teal); }
+  .bf-check b{ display:block; font-weight:800; }
+  .bf-check em{ display:block; font-style:normal; font-size:11px; font-weight:600; color:var(--ink-faint); }
+  .bf-step-n{ display:inline-flex; align-items:center; gap:4px; vertical-align:middle; margin:0 2px; }
+  .bf-step-n button{ width:26px; height:26px; padding:0; border:1.2px solid var(--line); border-radius:7px; background:#fff; font-size:15px; font-weight:800; line-height:1; color:var(--ink); cursor:pointer; }
+  .bf-step-n button:hover{ border-color:var(--teal); color:var(--teal-deep); }
+  .batch-compose .bf-step-n input, .survey-form-panel .bf-step-n input{ width:46px; padding:4px 2px; margin:0; text-align:center; font-size:13px; font-weight:800; border:1.2px solid var(--line); border-radius:7px; font-family:inherit; }
+  /* 수요조사 개체수 줄의 '반복 1' 이름표 (계통작성 입력칸의 .bf-qty-rep과 같은 모양) */
+  .survey-form-panel .svy-rep-tag{ flex-shrink:0; padding:2px 8px; border-radius:var(--pill); background:var(--teal-soft); color:var(--teal-deep); font-size:11px; font-weight:800; white-space:nowrap; }
+  .bf-rep-status{ display:block; margin-top:1px; font-weight:800; color:var(--amber); }
+  .bf-rep-status.ok{ color:var(--teal-deep); }
   .bf-cols{ display:flex; gap:10px; }
   .bf-cols > .bf-field{ flex:1; }
   .bf-field{ display:flex; flex-direction:column; gap:4px; min-width:0; font-size:11px; font-weight:700; color:var(--ink-faint); }

@@ -158,16 +158,50 @@ function addMonthsYmd(ymd, n){
 // 계통작성의 계획 목록에는 오늘(한국 시간)을 기준으로 앞뒤 한 달 안에 걸치는 계획만 보여준다. 기간이 이 범위와 조금이라도 겹치면 보인다.
 const BATCH_PLAN_WINDOW_MONTHS = 1;
 
-let batchPlanRefItems = [];     // 지금 집단 추가 창에 보이는 계획들
-
-function renderBatchPlanRef(room, target){
-  const wrap = document.getElementById('batchLocPlanRef');
-  if(!wrap) return;
-  const all = target ? bedPlansAt(room.name, target.bedNo, target.floor) : [];
+// 한 자리의 계획 중 위 범위(오늘 앞뒤 한 달)에 걸치는 것만. 계획 카드와 베드 맵의 '📅 계획' 표시가 같은 기준을 쓴다 (먼 계획은 둘 다 안 보인다)
+function bedPlansNear(roomName, bedNo, floor){
   const today = todayKST();
   const winStart = addMonthsYmd(today, -BATCH_PLAN_WINDOW_MONTHS), winEnd = addMonthsYmd(today, BATCH_PLAN_WINDOW_MONTHS);
-  batchPlanRefItems = all.filter(({ p })=> p.planned_start <= winEnd && (p.planned_end || p.planned_start) >= winStart);
+  return bedPlansAt(roomName, bedNo, floor).filter(({ p })=> p.planned_start <= winEnd && (p.planned_end || p.planned_start) >= winStart);
+}
+
+// 반복 실험 칸이 있는 사용 목적 (계통작성 · 수요조사 양식이 함께 쓴다)
+const REPEAT_PURPOSES = ['고온검정', '기타'];
+
+let batchPlanRefItems = [];     // 지금 집단 추가 창에 보이는 계획 카드들: { p, when, members:[{ p, t }] } (members = 이 카드의 계획이 잡힌 자리들)
+
+// 계획의 '내용'(자리 · 개체수 규모는 빼고)을 한 줄로 만든다. 이 줄이 같으면 같은 계획이다
+function planContentSig(p){
+  return [planPurposeKind(p) || '', p.crop_name, p.generation, p.use_purpose, p.line_no, p.cross_combo, p.purpose, p.heat_temp, p.heat_stage,
+    planCondText(p), p.planned_start, p.planned_end || p.planned_start, p.submitted_by].map(v=> String(v ?? '').trim()).join('\u0001');
+}
+
+// targets: 고른 자리들 [{ bedNo, floor }] (한 자리 객체나 null도 받는다).
+// 자리마다 잡힌 계획을 모으되, 내용이 같은 계획은 자리가 달라도 카드 하나로 합친다 (고온검정 반복 실험: 같은 계획을 여러 베드 칸에 잡아 둔 경우).
+// 한 자리에 같은 내용이 두 개 있는 경우(중복 등록)는 합치지 않고 따로 보여 준다.
+function renderBatchPlanRef(room, targets){
+  const wrap = document.getElementById('batchLocPlanRef');
+  if(!wrap) return;
+  const spots = !targets ? [] : (Array.isArray(targets) ? targets : [targets]).map(t=> ({ bedNo: Number(t.bedNo), floor: t.floor }));
+  const today = todayKST();
+  const rank = { now:0, soon:1, past:2 };
+  const byKey = new Map(), found = [];
+  spots.forEach(t=>{
+    const seenHere = new Map();   // 이 자리에서 같은 내용이 몇 번째인지
+    bedPlansNear(room.name, t.bedNo, t.floor).forEach(({ p, when })=>{   // 오늘 앞뒤 한 달 밖의 계획은 보이지 않는다
+      const sig = planContentSig(p), nth = seenHere.get(sig) || 0;
+      seenHere.set(sig, nth + 1);
+      const key = `${sig}\u0002${nth}`;
+      let card = byKey.get(key);
+      if(!card){ card = { p, when, members: [] }; byKey.set(key, card); found.push(card); }
+      card.members.push({ p, t });
+    });
+  });
+  // 진행 중 → 예정(빠른 순) → 지난 계획(최근 순)
+  batchPlanRefItems = found.sort((a, b)=> rank[a.when]-rank[b.when]
+    || (a.when==='past' ? b.p.planned_start.localeCompare(a.p.planned_start) : a.p.planned_start.localeCompare(b.p.planned_start)));
   if(!batchPlanRefItems.length){ wrap.innerHTML = ''; return; }   // 보여줄 계획이 없으면 아무것도 보이지 않는다
+  const multi = spots.length > 1;
   // 계획 하나가 카드 하나. 카드를 누르면 그 계획 내용이 아래 칸에 자동으로 채워진다.
   // 계통번호가 제일 크게 보이고(없으면 '계통번호 미정'), 그 아래에 작물·세대와 기간·규모·담당이 한눈에 보인다.
   const ymdDots = (ymd)=> ymd.replace(/-/g, '.');
@@ -176,14 +210,22 @@ function renderBatchPlanRef(room, target){
     if(when==='now'){ const left = daysBetween(today, p.planned_end || p.planned_start); return left>0 ? `진행 중 · ${left}일 남음` : '진행 중 · 오늘 끝나요'; }
     return '지난 계획';
   };
-  const cards = batchPlanRefItems.map(({ p, when }, idx)=>{
+  // 규모: 한 자리면 그 계획의 규모. 여러 자리에 같은 계획이 합쳐져 있으면 칸마다 같을 때 '칸마다 N개체', 다르면 합계
+  const scaleText = (members)=>{
+    const vals = members.map(m=> m.p.expected_scale).filter(v=> v != null && v !== '').map(Number);
+    if(!vals.length) return '';
+    if(members.length === 1) return `${vals[0].toLocaleString()}개체`;
+    return vals.every(v=> v === vals[0]) ? `칸마다 ${vals[0].toLocaleString()}개체` : `합계 ${vals.reduce((a, b)=> a + b, 0).toLocaleString()}개체 (칸마다 달라요)`;
+  };
+  const cards = batchPlanRefItems.map(({ p, when, members }, idx)=>{
     const end = p.planned_end || p.planned_start;
     const facts = [
+      ['자리', multi ? members.map(m=> workSpotLabel(room, m.t)).join(', ') : ''],
       ['기간', `${ymdDots(p.planned_start)} ~ ${ymdDots(end)} · ${daysBetween(p.planned_start, end)}일`],
       ['검정 목적', planPurposeKind(p)==='고온검정' ? p.purpose : ''],
       ['교배', crossComboLabel(p)],
       ['처리 조건', planCondText(p) || [p.heat_temp, p.heat_stage].filter(Boolean).join(' · ')],
-      ['규모', p.expected_scale!=null ? `${Number(p.expected_scale).toLocaleString()}개체` : ''],
+      ['규모', scaleText(members)],
       ['담당', p.submitted_by]
     ].filter(([, v])=> v);
     return `
@@ -203,8 +245,8 @@ function renderBatchPlanRef(room, target){
   const lacksLineNo = batchPlanRefItems.some(({ p })=> !p.line_no && !lineNoHidden(p.use_purpose));
   wrap.innerHTML = `
     <div class="bp-ref">
-      <div class="bp-ref-title">📅 ${escapeHtml(spotText(target.bedNo, target.floor))}의 분기별 계획 ${batchPlanRefItems.length}건</div>
-      <div class="bp-ref-hint">계획을 누르면 아래 칸이 자동으로 채워져요.${lacksLineNo ? ' 계통번호(고온검정은 계통/품종)가 미정인 계획은 그 칸만 직접 입력해주세요.' : ''}</div>
+      <div class="bp-ref-title">📅 ${multi ? `고른 ${spots.length}칸` : escapeHtml(spotText(spots[0].bedNo, spots[0].floor))}의 분기별 계획 ${batchPlanRefItems.length}건</div>
+      <div class="bp-ref-hint">계획을 누르면 아래 칸이 자동으로 채워져요.${batchPlanRefItems.some(c=> c.members.length > 1) ? ' 같은 계획이 여러 칸에 잡혀 있으면 카드 하나로 묶어 보여줘요.' : ''}${lacksLineNo ? ' 계통번호(고온검정은 계통/품종)가 미정인 계획은 그 칸만 직접 입력해주세요.' : ''}</div>
       <div class="bp-cards">${cards}</div>
     </div>`;
 }
@@ -216,6 +258,20 @@ function loadBatchFromPlan(idx){
   const root = document.getElementById('batchLocFields');
   if(!root) return;
   fillBatchFormFromPlan(root, p);   // 계획의 사용 목적(세대단축 · 인공교배 · 고온검정 · 기타)에 맞는 양식으로 바뀌고, 계획 내용이 채워진다
+  // 여러 자리를 골랐으면 칸마다 그 칸 계획의 규모를 베드별 개체수에 넣는다 (계획에 규모가 없는 칸은 그대로 둔다)
+  item.members.forEach(({ p: mp, t })=>{
+    const inp = root.querySelector(`[data-qty-key="${t.bedNo}|${t.floor}"]`);
+    if(inp && mp.expected_scale != null && mp.expected_scale !== '') inp.value = String(mp.expected_scale);
+  });
+  // 같은 고온검정 · 기타 실험 계획이 여러 칸에 잡혀 있었다면 반복 실험이다: [반복 실험이에요]를 켜고 반복 수를 그 칸 수로 맞춘다
+  if(REPEAT_PURPOSES.includes(planPurposeKind(p)) && item.members.length > 1){
+    const cb = root.querySelector('[data-rep="on"]'), nEl = root.querySelector('[data-rep="n"]');
+    if(cb){
+      cb.checked = true;
+      if(nEl) nEl.value = String(Math.min(20, item.members.length));
+      bfRepeatSync(root);
+    }
+  }
   // 방금 채운 카드는 강조하고 '✓ 채워짐'으로 바꾼다 (다른 카드를 누르면 그쪽으로 옮겨 간다)
   document.querySelectorAll('#batchLocPlanRef .bp-card').forEach((card, i)=>{
     card.classList.toggle('loaded', i===idx);
@@ -257,7 +313,7 @@ function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
   const qtyTargets = prefill ? null : (multiTargets || (defaultChecked && defaultChecked.bedNo != null ? [defaultChecked] : null));
   const qtyHtml = qtyTargets ? `
       <div class="bf-sec">
-        ${bfLbl('베드별 개체수', true)}
+        ${bfLbl('<span data-qty-ttl>베드별 개체수</span>', true)}
         <div class="bf-qty-list" data-keys="${qtyTargets.map(t=> `${t.bedNo}|${t.floor}`).join(',')}">${batchQtyRowsHtml(room, qtyTargets)}</div>
       </div>` : undefined;
   const roomText = roomLabel(srcRoom.name);   // 제목 아래 글: 작성 칸을 연 방 (세대진전 · 다시 심기는 수확한 방, 심을 방은 아래 '심을 위치'에서 고른다)
@@ -344,8 +400,8 @@ function openBatchLocationModal(roomId, prefill, defaultChecked, opts){
   }
 
   // 새로 추가할 때만 그 베드·층의 분기별 계획을 보여준다 (다른 위치로 복사할 때는 보여주지 않는다)
-  // (자리를 하나만 골랐을 때만. 여러 자리를 골랐으면 어느 자리의 계획인지 알 수 없어서 보여주지 않는다)
-  renderBatchPlanRef(room, prefill ? null : multiTargets ? (multiTargets.length === 1 ? multiTargets[0] : null)
+  // (여러 자리를 골랐으면 고른 자리 모두의 계획을 모아 보여준다. 같은 내용의 계획은 카드 하나로 묶인다 — 고온검정 반복 실험)
+  renderBatchPlanRef(room, prefill ? null : multiTargets ? multiTargets
     : defaultChecked ? { bedNo: Number(defaultChecked.bedNo), floor: defaultChecked.floor } : null);
   // 화면이 좁아 작성 패널이 아래로 내려가 있으면 입력칸이 보이도록 스크롤해 준다
   // (자리를 눌러 저절로 열리는 칸은 베드 맵에서 계속 자리를 누를 수 있게 스크롤하지 않는다)
@@ -357,7 +413,8 @@ function batchQtyRowsHtml(room, targets){
   return targets.map(t=>{
     const n = workSpotBatches(room, Number(t.bedNo), t.floor).length;   // 이미 재료가 있는 자리는 '사용중 N' 뱃지
     return `<div class="bf-qty-row">
-    <span>${escapeHtml(workSpotLabel(room, t))}</span>
+    <span class="bf-qty-rep" style="display:none;"></span>
+    <span data-spot>${escapeHtml(workSpotLabel(room, t))}</span>
     ${n ? `<em class="bf-qty-used" title="이 자리에 이미 계통 ${n}개가 있어요">사용중 ${n}</em>` : ''}
     <input type="number" min="0" inputmode="numeric" data-qty-key="${t.bedNo}|${t.floor}" placeholder="개체수" />
   </div>`;
@@ -483,8 +540,9 @@ function refreshWorkMultiCompose(room){
     list.innerHTML = batchQtyRowsHtml(room, targets);
     list.dataset.keys = keys;
     list.querySelectorAll('[data-qty-key]').forEach(i=>{ if(kept[i.dataset.qtyKey]) i.value = kept[i.dataset.qtyKey]; });
-    renderBatchPlanRef(room, targets.length === 1 ? targets[0] : null);   // 한 자리만 남았으면 그 자리의 분기별 계획을 보여준다
+    renderBatchPlanRef(room, targets);   // 고른 자리들의 분기별 계획을 다시 모아 보여준다
   }
+  bfRepeatSync(document.getElementById('batchLocFields'));   // 고른 칸 수가 바뀌었으니 반복 실험의 '몇 칸 선택됨' 안내와 반복 번호를 맞춘다
   const head = workComposeHeading(room, targets);
   const h3 = document.querySelector('#workRoomDetail .batch-compose .panel-box-head h3');
   const sub = document.querySelector('#workRoomDetail .batch-compose .panel-box-head p');
@@ -745,14 +803,19 @@ function batchFormHtml(v, mode, extra = {}){
       <input type="hidden" data-bf="env_temp" value="${e(withUnit(env.temp, '℃'))}" />
       <input type="hidden" data-bf="env_day" value="${e(withUnit(env.day, '시간'))}" />
 
-      ${create ? `<div ${sec('고온검정', 'bf-sec bf-guide')}>
-        <b>반복 실험일경우</b>
-        <ol>
-          <li>품종은 <b>한 번만</b> 적어요. (반복 횟수는 안 적어요)</li>
-          <li>반복 수만큼 <b>베드 칸을 눌러요.</b> 3반복이면 3칸이에요.</li>
-          <li>칸마다 <b>개체수</b>를 적고 등록해요.</li>
-        </ol>
-        <div style="margin-top:4px;">품종이 다른 묶음은 따로 등록해요.</div>
+      ${(create && typeof extra.qtyHtml === 'string' && extra.qtyHtml) ? `<div ${sec(REPEAT_PURPOSES.join(' '))}>
+        <label class="bf-check"><input type="checkbox" data-rep="on" onchange="bfRepeatSync(this.closest('[data-bf-root]'))" /><span><b>반복 실험이에요</b><em>같은 내용을 여러 베드 칸에 반복해서 심어요</em></span></label>
+        <div class="bf-guide bf-repeat" data-rep-box style="display:none;">
+          <ol>
+            <li><span ${sec('고온검정', '')}><b>품종</b> 위 '계통/품종' 칸에 <b>한 번만</b> 적어요. 여러 개면 쉼표(,)로 나눠요. 반복 횟수는 안 적어요.</span><span ${sec('기타', '')}><b>계통/품종</b> 위 칸에 있으면 <b>한 번만</b> 적어요. 반복 횟수는 안 적어요.</span></li>
+            <li><b>반복 수</b>
+              <span class="bf-step-n"><button type="button" onclick="bfRepeatStep(this, -1)" aria-label="반복 수 줄이기">−</button><input type="number" min="2" max="20" inputmode="numeric" value="3" data-rep="n" oninput="bfRepeatSync(this.closest('[data-bf-root]'))" /><button type="button" onclick="bfRepeatStep(this, 1)" aria-label="반복 수 늘리기">+</button></span> 번
+            </li>
+            <li><b>베드 칸</b> 베드 맵에서 반복 수만큼 칸을 눌러요. <span class="bf-rep-status" data-rep-status></span></li>
+            <li><b>개체수</b> 아래 '반복별 개체수'에 칸마다 적고 등록해요.</li>
+          </ol>
+          <div class="bf-rep-note"><span ${sec('고온검정', '')}>품종이 다른 묶음은 따로 등록해요.</span><span ${sec('기타', '')}>계통/품종이나 처리 조건이 다른 묶음은 따로 등록해요.</span></div>
+        </div>
       </div>` : ''}
 
       <div ${sec('고온검정')}>
@@ -869,6 +932,57 @@ function onBatchPurposeChange(root){
     else if(!ue.value && ge.value) ue.value = ge.value;
   });
   if(grow) bfApplyDefaultDays(root);
+  bfRepeatSync(root);   // 고온검정이 아니면 반복 실험 표시(반복 번호 · 안내)를 걷는다
+}
+
+// ── 고온검정 · 기타 실험의 반복 실험: [반복 실험이에요] 체크 → 품종 → 반복 수 → 베드 칸 → 반복별 개체수 ──
+// 반복 수는 따로 저장하지 않는다. 같은 품종 묶음이 몇 칸에 등록됐는지가 반복 수다 (overview.js의 heatSetsSummary).
+// 여기서 받는 '반복 수'는 베드 칸을 빠뜨리거나 더 누르지 않았는지 확인하는 용도다.
+function bfRepeatOn(root){
+  const cb = root && root.querySelector('[data-rep="on"]'), purpose = root && root.querySelector('[data-bf="use_purpose"]');
+  return !!cb && cb.checked && !!purpose && REPEAT_PURPOSES.includes(purpose.value);
+}
+
+function bfRepeatCount(root){
+  const n = parseInt((root.querySelector('[data-rep="n"]') || {}).value, 10);
+  return n > 0 ? n : 0;
+}
+
+// 체크 · 반복 수 · 고른 칸 수가 바뀔 때마다 안내 글과 개체수 줄의 이름('반복 1' …)을 맞춘다
+function bfRepeatSync(root){
+  if(!root) return;
+  const cb = root.querySelector('[data-rep="on"]');
+  if(!cb) return;   // 반복 실험 칸이 없는 입력칸(복사 · 세대진전 등)
+  const on = bfRepeatOn(root);
+  const box = root.querySelector('[data-rep-box]');
+  if(box) box.style.display = cb.checked ? '' : 'none';
+  const rows = [...root.querySelectorAll('.bf-qty-row')];
+  rows.forEach((row, i)=>{
+    const tag = row.querySelector('.bf-qty-rep');
+    if(!tag) return;
+    tag.style.display = on ? '' : 'none';
+    tag.textContent = `반복 ${i + 1}`;
+  });
+  const ttl = root.querySelector('[data-qty-ttl]');
+  if(ttl) ttl.textContent = on ? '반복별 개체수' : '베드별 개체수';
+  const st = root.querySelector('[data-rep-status]');
+  if(st){
+    const have = rows.length, want = bfRepeatCount(root);
+    let text, ok = false;
+    if(want < 2) text = '반복 수는 2 이상으로 적어주세요';
+    else if(have === want){ text = `✓ ${have}칸 선택됨`; ok = true; }
+    else if(have < want) text = `지금 ${have}칸 선택됨 · ${want - have}칸 더 눌러주세요`;
+    else text = `지금 ${have}칸 선택됨 · ${have - want}칸이 많아요`;
+    st.textContent = text;
+    st.classList.toggle('ok', ok);
+  }
+}
+
+function bfRepeatStep(btn, d){
+  const root = btn.closest('[data-bf-root]'), inp = root && root.querySelector('[data-rep="n"]');
+  if(!inp) return;
+  inp.value = Math.max(2, Math.min(20, (bfRepeatCount(root) || 3) + d));
+  bfRepeatSync(root);
 }
 
 // 기타의 처리 요인 칩 상태에 맞춰 구간 카드의 조건 칸을 보이고 숨긴다
@@ -1037,6 +1151,13 @@ function validateBatchForm(root){
   if(!v('manager')) return bad('담당자(이름)를 입력해주세요.', q('manager'));
   if(purpose === '기타' && !v('purpose_etc')) return bad('실험 내용을 적어주세요.', q('purpose_etc'));
   if(!v('name')) return bad('작물을 선택해주세요.', null);
+  if(bfRepeatOn(root)){
+    // 반복 실험: 품종 한 번 · 반복 수 = 고른 베드 칸 수. 고온검정은 같은 품종끼리 묶어 반복 수를 세므로 품종이 꼭 있어야 한다 (기타 실험은 계통/품종이 없을 수도 있다)
+    if(purpose === '고온검정' && !v('line_no')) return bad("반복 실험은 '계통/품종' 칸에 품종을 한 번 적어주세요.", q('line_no'));
+    const want = bfRepeatCount(root), have = root.querySelectorAll('[data-qty-key]').length, nEl = root.querySelector('[data-rep="n"]');
+    if(want < 2) return bad('반복 수는 2 이상으로 적어주세요.', nEl);
+    if(have !== want) return bad(`반복 수는 ${want}번인데 베드 칸이 ${have}개 골라져 있어요.\n${have < want ? `베드 맵에서 ${want - have}칸을 더 눌러주세요.` : `베드 맵에서 ${have - want}칸을 빼거나 반복 수를 ${have}번으로 바꿔주세요.`}`, nEl);
+  }
   if(purpose === '세대단축' || purpose === '인공교배'){
     if(!v('cross_combo')) return bad('교배조합을 입력해주세요.', q('cross_combo'));
     if(!v('purpose_breed')) return bad('교배목적을 입력해주세요.', q('purpose_breed'));
@@ -1062,7 +1183,11 @@ function validateBatchForm(root){
   }
   // 고른 자리마다 개체수가 있어야 한다 (0 이하는 안 된다)
   for(const inp of root.querySelectorAll('[data-qty-key]')){
-    if(inp.value === '' || !(Number(inp.value) > 0)) return bad(`${inp.previousElementSibling.textContent}의 개체수를 입력해주세요.`, inp);
+    if(inp.value === '' || !(Number(inp.value) > 0)){
+      const row = inp.closest('.bf-qty-row'), spot = row && row.querySelector('[data-spot]'), rep = row && row.querySelector('.bf-qty-rep');
+      const label = [bfRepeatOn(root) && rep ? rep.textContent : '', spot ? spot.textContent : ''].filter(Boolean).join(' · ');
+      return bad(`${label}의 개체수를 입력해주세요.`, inp);
+    }
   }
   return null;
 }

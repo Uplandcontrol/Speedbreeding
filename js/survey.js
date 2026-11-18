@@ -9,6 +9,7 @@ function selectSurveyRoom(name){
   surveySelectedCrops = new Set();
   surveySelectedGenerations = new Set();
   surveySelectedFactors = new Set();
+  surveyResetRepeat();
   renderSurveyView();
 }
 
@@ -212,6 +213,67 @@ function miniFacilityHtml(selectedName, pickFn, tipFn){
 
 function surveyIsHeatTest(){ return surveySelectedPurposes.has('고온검정'); }
 
+// ── 고온검정 · 기타 실험의 반복 실험 (계통작성 양식과 같은 구성): [반복 실험이에요] 체크 → 품종 → 반복 수 → 베드 칸 → 반복별 예상 개체수 ──
+// 반복 수는 따로 저장하지 않는다. 같은 품종을 적은 응답이 몇 칸에 들어가는지가 반복 수다 (계획 · 계통작성에서도 그렇게 센다).
+// 베드를 누를 때마다 양식을 다시 그리므로, 체크 · 반복 수는 여기 기억해 둔다 (방을 바꾸거나 제출하면 지운다)
+let surveyRepeatOn = false, surveyRepeatNum = 3;
+
+function surveyResetRepeat(){ surveyRepeatOn = false; surveyRepeatNum = 3; }
+
+// 반복 실험 칸이 있는 목적: 고온검정 · 기타 (계통작성의 REPEAT_PURPOSES와 같다)
+function surveyHasRepeat(){ return surveyIsHeatTest() || surveyIsEtc(); }
+
+function surveyRepeatActive(){ return surveyRepeatOn && surveyHasRepeat(); }
+
+// 체크 · 반복 수 · 고른 칸 수 · 사용 목적이 바뀔 때마다 안내 글과 개체수 줄의 이름('반복 1' …)을 맞춘다
+function surveyRepeatApply(){
+  const wrap = document.getElementById('surveyRepeatWrap');
+  if(!wrap) return;   // 베드를 아직 안 골라 양식이 없을 때
+  wrap.style.display = surveyHasRepeat() ? '' : 'none';
+  const box = document.getElementById('surveyRepeatBox');
+  if(box) box.style.display = surveyRepeatOn ? '' : 'none';
+  // 안내 글은 목적에 맞는 쪽만 (고온검정은 품종, 기타는 계통/품종·처리 조건)
+  const heatTxt = document.querySelectorAll('#surveyRepeatWrap [data-rep-for="heat"]'), etcTxt = document.querySelectorAll('#surveyRepeatWrap [data-rep-for="etc"]');
+  heatTxt.forEach(e=>{ e.style.display = surveyIsHeatTest() ? '' : 'none'; });
+  etcTxt.forEach(e=>{ e.style.display = surveyIsEtc() ? '' : 'none'; });
+  const on = surveyRepeatActive();
+  const rows = [...document.querySelectorAll('#surveyScaleList .svy-scale-row')];
+  rows.forEach((row, i)=>{
+    const tag = row.querySelector('.svy-rep-tag');
+    if(!tag) return;
+    tag.style.display = on ? '' : 'none';
+    tag.textContent = `반복 ${i + 1}`;
+  });
+  const ttl = document.getElementById('surveyScaleTtl');
+  if(ttl) ttl.textContent = on ? '반복별 예상 개체수' : '베드별 예상 개체수';
+  const st = document.getElementById('surveyRepeatStatus');
+  if(st){
+    const have = surveySelectedBeds.size, want = surveyRepeatNum;
+    let text, ok = false;
+    if(want < 2) text = '반복 수는 2 이상으로 적어주세요';
+    else if(have === want){ text = `✓ ${have}칸 선택됨`; ok = true; }
+    else if(have < want) text = `지금 ${have}칸 선택됨 · ${want - have}칸 더 눌러주세요`;
+    else text = `지금 ${have}칸 선택됨 · ${have - want}칸이 많아요`;
+    st.textContent = text;
+    st.classList.toggle('ok', ok);
+  }
+}
+
+function surveyRepeatToggle(cb){ surveyRepeatOn = cb.checked; surveyRepeatApply(); }
+
+function surveyRepeatInput(inp){
+  const n = parseInt(inp.value, 10);
+  surveyRepeatNum = n > 0 ? n : 0;
+  surveyRepeatApply();
+}
+
+function surveyRepeatStep(d){
+  surveyRepeatNum = Math.max(2, Math.min(20, (surveyRepeatNum || 3) + d));
+  const inp = document.getElementById('surveyRepeatCount');
+  if(inp) inp.value = surveyRepeatNum;
+  surveyRepeatApply();
+}
+
 // 기타 = 온도·일장 등 다양한 실험. 교배조합·교배목적·세대별 기간 대신 처리 요인·구간별 조건과 희망 사용기간을 받는다
 function surveyIsEtc(){ return surveySelectedPurposes.has('기타'); }
 
@@ -313,6 +375,7 @@ function toggleSurveyPurpose(val, el){
   const heatWrap = document.getElementById('surveyHeatWrap');
   if(heatWrap) heatWrap.style.display = heat ? 'flex' : 'none';
   surveyApplyLineNoField();
+  surveyRepeatApply();   // 반복 실험 칸은 고온검정일 때만 보인다
 }
 
 // 기타(실험)의 처리 구간 카드 한 장: [적용 시기] + 고른 요인(온도·일장)의 조건 칸. 구간은 [+ 구간 추가]로 늘린다.
@@ -592,6 +655,21 @@ function renderSurveyView(){
         <input id="surveyLineNo" placeholder="${lineNoPlaceholder([...surveySelectedPurposes][0])}" style="${dateFieldStyle}" />
       </label>
 
+      <div id="surveyRepeatWrap" style="display:${surveyHasRepeat()?'':'none'};">
+        <label class="bf-check"><input type="checkbox" id="surveyRepeatOn" ${surveyRepeatOn?'checked':''} onchange="surveyRepeatToggle(this)" /><span><b>반복 실험이에요</b><em>같은 내용을 여러 베드 칸에 반복해서 심어요</em></span></label>
+        <div id="surveyRepeatBox" class="bf-guide bf-repeat" style="display:${surveyRepeatOn?'':'none'};">
+          <ol>
+            <li><span data-rep-for="heat" style="display:${surveyIsHeatTest()?'':'none'};"><b>품종</b> 위 '계통/품종' 칸에 <b>한 번만</b> 적어요. 여러 개면 쉼표(,)로 나눠요. 반복 횟수는 안 적어요.</span><span data-rep-for="etc" style="display:${surveyIsEtc()?'':'none'};"><b>계통/품종</b> 위 칸에 있으면 <b>한 번만</b> 적어요. 반복 횟수는 안 적어요.</span></li>
+            <li><b>반복 수</b>
+              <span class="bf-step-n"><button type="button" onclick="surveyRepeatStep(-1)" aria-label="반복 수 줄이기">−</button><input type="number" id="surveyRepeatCount" min="2" max="20" inputmode="numeric" value="${surveyRepeatNum || ''}" oninput="surveyRepeatInput(this)" /><button type="button" onclick="surveyRepeatStep(1)" aria-label="반복 수 늘리기">+</button></span> 번
+            </li>
+            <li><b>베드 칸</b> 가운데 베드 맵에서 반복 수만큼 칸을 눌러요. <span class="bf-rep-status" id="surveyRepeatStatus"></span></li>
+            <li><b>개체수</b> 아래 '반복별 예상 개체수'에 칸마다 적고 제출해요.</li>
+          </ol>
+          <div class="bf-rep-note"><span data-rep-for="heat" style="display:${surveyIsHeatTest()?'':'none'};">품종이 다른 묶음은 따로 제출해요.</span><span data-rep-for="etc" style="display:${surveyIsEtc()?'':'none'};">계통/품종이나 처리 조건이 다른 묶음은 따로 제출해요.</span></div>
+        </div>
+      </div>
+
       <div id="surveyCrossWrap" style="display:${(surveyIsHeatTest()||surveyIsEtc())?'none':'flex'}; gap:10px;">
         <label style="flex:1; min-width:0; font-size:11px; color:var(--ink-faint); font-weight:700; display:flex; flex-direction:column; gap:4px;">
           <span>교배조합 <span style="color:var(--danger);">*</span></span>
@@ -686,10 +764,11 @@ function renderSurveyView(){
       </div>
 
       <div>
-        <div style="font-size:11px; font-weight:700; color:var(--ink-faint); margin-bottom:6px;">베드별 예상 개체수 <span style="color:var(--danger);">*</span></div>
-        <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="font-size:11px; font-weight:700; color:var(--ink-faint); margin-bottom:6px;"><span id="surveyScaleTtl">베드별 예상 개체수</span> <span style="color:var(--danger);">*</span></div>
+        <div id="surveyScaleList" style="display:flex; flex-direction:column; gap:8px;">
           ${sortedSelectedBeds.map(b=>`
-            <div style="display:flex; align-items:center; gap:10px;">
+            <div class="svy-scale-row" style="display:flex; align-items:center; gap:10px;">
+              <span class="svy-rep-tag" style="display:none;"></span>
               <span style="width:110px; flex-shrink:0; font-size:12.5px; font-weight:700; color:var(--ink);">${escapeHtml(spotText(b.bedNo, b.floor, true))}</span>
               <input id="surveyScale-${b.bedNo}-${escapeHtml(b.floor)}" type="number" placeholder="개체수" style="flex:1; min-width:0; ${dateFieldStyle}" />
             </div>
@@ -732,6 +811,7 @@ function renderSurveyView(){
   // 관리자용 결과 영역은 따로 그린다 (방 필터를 바꿀 때 이 영역만 다시 그려서, 위쪽 수요조사 입력 칸에 쓰던 내용이 지워지지 않게)
   wrap.innerHTML = `<div class="survey-user-area">${topHtml}</div>` + (isAdmin ? `<div id="surveyResultsWrap">${surveyResultsHtml()}</div>` : '');
   surveyApplyDefaultDays();   // 생육일수를 선택한 작물의 기본값으로 채우고 달력 범위를 현재 선택에 맞춰 둔다
+  surveyRepeatApply();        // 반복 실험의 '몇 칸 선택됨' 안내와 반복 번호를 지금 고른 베드 수에 맞춘다
 }
 
 // 응답 결과 목록의 방 필터를 바꾸고 결과 영역만 다시 그린다
@@ -875,6 +955,20 @@ async function submitDemandSurvey(){
   const crops = [...surveySelectedCrops];
   if(!crops.length){ alert('작물을 선택해주세요.'); return; }
 
+  // 고온검정 · 기타 실험의 반복 실험: 품종은 한 번 · 반복 수 = 고른 베드 칸 수 (칸을 빠뜨리거나 더 누르지 않았는지 확인한다)
+  // 품종은 고온검정만 꼭 적는다 (같은 품종끼리 묶어 반복 수를 세므로). 기타 실험은 계통/품종이 없을 수도 있다
+  if(surveyRepeatActive()){
+    const lineEl = document.getElementById('surveyLineNo');
+    if(surveyIsHeatTest() && !lineEl.value.trim()){ alert("반복 실험은 '계통/품종' 칸에 품종을 한 번 적어주세요."); lineEl.focus(); return; }
+    const want = surveyRepeatNum, have = surveySelectedBeds.size, countEl = document.getElementById('surveyRepeatCount');
+    if(want < 2){ alert('반복 수는 2 이상으로 적어주세요.'); if(countEl) countEl.focus(); return; }
+    if(have !== want){
+      alert(`반복 수는 ${want}번인데 베드 칸이 ${have}개 골라져 있어요.\n${have < want ? `베드 맵에서 ${want - have}칸을 더 눌러주세요.` : `베드 맵에서 ${have - want}칸을 빼거나 반복 수를 ${have}번으로 바꿔주세요.`}`);
+      if(countEl) countEl.focus();
+      return;
+    }
+  }
+
   // 고온검정·기타는 교배조합·교배목적·세대별 희망기간 입력칸이 숨겨지므로, 이전에 입력된 값이 남아 있어도 제출하지 않는다
   // 고온검정은 대신 '검정 목적' 칸을 받아서 같은 breeding_purpose 칸에 담는다 (분기별 계획 → 계통작성의 검정 목적으로 이어진다)
   const isHeatTest = surveyIsHeatTest();
@@ -984,11 +1078,15 @@ async function submitDemandSurvey(){
   }
 
   // 고른 베드마다 예상 개체수가 있어야 한다 (0 이하는 안 된다)
-  for(const key of [...surveySelectedBeds].sort((a, b)=> parseInt(a) - parseInt(b) || a.localeCompare(b))){
+  const repeatNow = surveyRepeatActive();
+  const scaleKeys = [...surveySelectedBeds].sort((a, b)=> parseInt(a) - parseInt(b) || a.localeCompare(b));
+  for(const key of scaleKeys){
     const [bedNo, floor] = key.split('|');
     const scaleEl = document.getElementById(`surveyScale-${bedNo}-${floor}`);
     if(!scaleEl || scaleEl.value === '' || !(Number(scaleEl.value) > 0)){
-      alert(`${spotText(bedNo, floor, true)}의 예상 개체수를 입력해주세요.`);
+      // 반복 실험이면 화면에 보이는 '반복 N' 이름표 순서(베드 맵 순서)로 어느 반복인지 알려 준다
+      const rep = repeatNow ? `${scaleEl && scaleEl.closest('.svy-scale-row') ? scaleEl.closest('.svy-scale-row').querySelector('.svy-rep-tag').textContent : ''} · ` : '';
+      alert(`${rep}${spotText(bedNo, floor, true)}의 예상 개체수를 입력해주세요.`);
       if(scaleEl) scaleEl.focus();
       return;
     }
@@ -1045,6 +1143,7 @@ async function submitDemandSurvey(){
   surveySelectedFactors = new Set();
   surveySelectedRoomName = null;
   surveySelectedBeds = new Set();
+  surveyResetRepeat();
   showToast(`응답이 제출됐어요${bedCount>1?` (베드 ${bedCount}곳)`:''}. 감사합니다!`);
   await loadAll();
 }

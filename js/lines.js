@@ -290,7 +290,8 @@ function bedMapHtml(room, info, opts){
     const entrance = aisle ? `<span class="survey-bed-entrance">입구</span>` : '';
     const attrs = `onclick="${opts.pickFn}(${bedNo}, '${floor}')"`;
     if(!list.length){
-      const planned = plain ? [] : bedPlansAt(room.name, bedNo, floor).filter(x=> x.when!=='past');
+      // '📅 계획' 표시: 오늘 앞뒤 한 달 안에 걸치는 계획만 (계획 카드와 같은 기준 — 두 달 뒤 같은 먼 계획은 표시하지 않는다)
+      const planned = plain ? [] : bedPlansNear(room.name, bedNo, floor).filter(x=> x.when!=='past');
       const tip = plain ? (aisle ? '통로도 선택할 수 있어요' : '') : planned.length ? `계획 있음 · ${planTitleText(planned[0].p)}` : (aisle ? '통로 · 빈 자리' : '빈 자리');
       return `
         <button type="button" class="wbed-slot ${aisle ? 'aisle' : ''} empty ${selected ? 'selected' : ''}" ${attrs}${tip ? ` title="${escapeHtml(tip)}"` : ''}>

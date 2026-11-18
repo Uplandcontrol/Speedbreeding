@@ -314,6 +314,7 @@ function tourResetSurvey(){
   surveySelectedCrops = new Set();
   surveySelectedGenerations = new Set();
   surveySelectedFactors = new Set();
+  surveyResetRepeat();
   if(viewMode === 'survey') renderSurveyView();
 }
 
@@ -370,8 +371,7 @@ function tourOpenDemoBatchModal(accept){
 
 // 분기별 계획 카드가 뜨는 빈 자리인지 (계통작성 계획 목록과 같은 기간: 오늘 앞뒤 한 달)
 function tourSpotHasPlan(r, bedNo, floor){
-  const today = todayKST(), lo = addMonthsYmd(today, -BATCH_PLAN_WINDOW_MONTHS), hi = addMonthsYmd(today, BATCH_PLAN_WINDOW_MONTHS);
-  return bedPlansAt(r.name, bedNo, floor).some(({ p })=> p.planned_start <= hi && (p.planned_end || p.planned_start) >= lo);
+  return bedPlansNear(r.name, bedNo, floor).length > 0;
 }
 
 function tourGetDemoBatchId(){
